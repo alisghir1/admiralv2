@@ -5,6 +5,9 @@ import json
 import sqlite3
 import csv
 import tkinter as tk
+import customtkinter as ctk
+ctk.set_appearance_mode("dark")
+ctk.set_default_color_theme("blue")
 from tkinter import messagebox, ttk
 
 # --- CONFIGURATION GLOBALE ---
@@ -37,7 +40,7 @@ def get_postes_disponibles():
     except Exception:
         return default_fallback
 
-class ConfigDialog(tk.Toplevel):
+class ConfigDialog(ctk.CTkToplevel):
     def __init__(self, parent, is_cancellable=False):
         super().__init__(parent)
         self.is_cancellable = is_cancellable
@@ -55,24 +58,24 @@ class ConfigDialog(tk.Toplevel):
         y = (self.winfo_screenheight() // 2) - (height // 2)
         self.geometry(f'+{x}+{y}')
         
-        tk.Label(self, text="Veuillez choisir le poste de travail :", 
+        ctk.CTkLabel(self, text="Veuillez choisir le poste de travail :", 
                  font=("Helvetica", 14, "bold")).pack(pady=20)
         
         postes_list = get_postes_disponibles()
-        self.cb = ttk.Combobox(self, textvariable=self.poste_choisi, values=postes_list, font=("Helvetica", 14), state="readonly")
+        self.cb = ctk.CTkComboBox(self, textvariable=self.poste_choisi, values=postes_list, font=("Helvetica", 14), state="readonly")
         self.cb.pack(pady=10, fill=tk.X, padx=50)
         if postes_list:
             self.cb.current(0)
             
-        btn_frame = tk.Frame(self)
+        btn_frame = ctk.CTkFrame(self)
         btn_frame.pack(pady=20)
         
-        tk.Button(btn_frame, text="Valider", font=("Helvetica", 14, "bold"), 
-                  bg="#4CAF50", fg="white", command=self.on_validate).pack(side=tk.LEFT, padx=10)
+        ctk.CTkButton(btn_frame, text="Valider", font=("Helvetica", 14, "bold"), 
+                  fg_color="#4CAF50", text_color="white", command=self.on_validate).pack(side=tk.LEFT, padx=10)
         
         if self.is_cancellable:
-            tk.Button(btn_frame, text="Annuler", font=("Helvetica", 14), 
-                      bg="#F44336", fg="white", command=self.on_close).pack(side=tk.LEFT, padx=10)
+            ctk.CTkButton(btn_frame, text="Annuler", font=("Helvetica", 14), 
+                      fg_color="#F44336", text_color="white", command=self.on_close).pack(side=tk.LEFT, padx=10)
         
         self.protocol("WM_DELETE_WINDOW", self.on_close)
         
@@ -86,31 +89,31 @@ class ConfigDialog(tk.Toplevel):
         if not self.is_cancellable:
             sys.exit(0)
 
-class AddOfDialog(tk.Toplevel):
+class AddOfDialog(ctk.CTkToplevel):
     def __init__(self, parent, db_conn, cde, default_qte=1, default_design="", default_obs="", lignes_sage=""):
         super().__init__(parent)
         self.title(f"Ajouter un Produit (OF) à la commande {cde}")
         self.geometry("700x700")
-        self.configure(bg="#2D2D30")
+        self.configure(fg_color="#2D2D30")
         self.db_conn = db_conn
         self.cde = cde
         self.lignes_sage = lignes_sage
         self.result = False
         
         # UI
-        tk.Label(self, text=f"NOUVEL ORDRE DE FABRICATION\nCommande : {cde}", font=("Arial", 14, "bold"), bg="#2D2D30", fg="white").pack(pady=10)
+        ctk.CTkLabel(self, text=f"NOUVEL ORDRE DE FABRICATION\nCommande : {cde}", font=("Arial", 14, "bold"), fg_color="#2D2D30", text_color="white").pack(pady=10)
         
-        self.btn_frame = tk.Frame(self, bg="#2D2D30")
+        self.btn_frame = ctk.CTkFrame(self, fg_color="#2D2D30")
         self.btn_frame.pack(side=tk.BOTTOM, fill=tk.X, pady=20)
         
-        form_frame = tk.Frame(self, bg="#2D2D30")
+        form_frame = ctk.CTkFrame(self, fg_color="#2D2D30")
         form_frame.pack(side=tk.TOP, fill=tk.BOTH, expand=True, padx=20, pady=10)
         
         # Produit
-        tk.Label(form_frame, text="Produit :", font=("Arial", 12), bg="#2D2D30", fg="white").grid(row=0, column=0, sticky="w", pady=5)
+        ctk.CTkLabel(form_frame, text="Produit :", font=("Arial", 12), fg_color="#2D2D30", text_color="white").grid(row=0, column=0, sticky="w", pady=5)
         
         self.prod_var = tk.StringVar()
-        self.cb_prod = ttk.Combobox(form_frame, textvariable=self.prod_var, state="readonly", width=40, font=("Arial", 11))
+        self.cb_prod = ctk.CTkComboBox(form_frame, textvariable=self.prod_var, state="readonly", width=40, font=("Arial", 11))
         self.cb_prod.grid(row=0, column=1, sticky="w", pady=5)
         self.cb_prod.bind("<<ComboboxSelected>>", self.on_prod_select)
         
@@ -124,30 +127,30 @@ class AddOfDialog(tk.Toplevel):
         self.cb_prod['values'] = list(self.produits_map.keys())
         
         # Designation
-        tk.Label(form_frame, text="Désignation :", font=("Arial", 12), bg="#2D2D30", fg="white").grid(row=1, column=0, sticky="w", pady=5)
+        ctk.CTkLabel(form_frame, text="Désignation :", font=("Arial", 12), fg_color="#2D2D30", text_color="white").grid(row=1, column=0, sticky="w", pady=5)
         self.design_var = tk.StringVar(value=default_design)
-        tk.Entry(form_frame, textvariable=self.design_var, font=("Arial", 11), width=42).grid(row=1, column=1, sticky="w", pady=5)
+        ctk.CTkEntry(form_frame, textvariable=self.design_var, font=("Arial", 11), width=42).grid(row=1, column=1, sticky="w", pady=5)
         
         # Observations
-        tk.Label(form_frame, text="Observations :", font=("Arial", 12), bg="#2D2D30", fg="white").grid(row=2, column=0, sticky="w", pady=5)
+        ctk.CTkLabel(form_frame, text="Observations :", font=("Arial", 12), fg_color="#2D2D30", text_color="white").grid(row=2, column=0, sticky="w", pady=5)
         self.obs_var = tk.StringVar(value=default_obs)
-        tk.Entry(form_frame, textvariable=self.obs_var, font=("Arial", 11), width=42).grid(row=2, column=1, sticky="w", pady=5)
+        ctk.CTkEntry(form_frame, textvariable=self.obs_var, font=("Arial", 11), width=42).grid(row=2, column=1, sticky="w", pady=5)
         
         # Quantite
-        tk.Label(form_frame, text="Quantité :", font=("Arial", 12), bg="#2D2D30", fg="white").grid(row=3, column=0, sticky="w", pady=5)
+        ctk.CTkLabel(form_frame, text="Quantité :", font=("Arial", 12), fg_color="#2D2D30", text_color="white").grid(row=3, column=0, sticky="w", pady=5)
         self.qte_var = tk.IntVar(value=default_qte)
         tk.Spinbox(form_frame, from_=1, to=9999, textvariable=self.qte_var, font=("Arial", 11), width=10).grid(row=3, column=1, sticky="w", pady=5)
         
         # Gamme Preview avec choix des postes
-        tk.Label(form_frame, text="Gamme & Assignation des Postes :", font=("Arial", 12, "bold"), bg="#2D2D30", fg="#4da6ff").grid(row=4, column=0, columnspan=2, sticky="w", pady=(15,5))
+        ctk.CTkLabel(form_frame, text="Gamme & Assignation des Postes :", font=("Arial", 12, "bold"), fg_color="#2D2D30", text_color="#4da6ff").grid(row=4, column=0, columnspan=2, sticky="w", pady=(15,5))
         
-        self.gamme_frame = tk.Frame(form_frame, bg="#1E1E1E", bd=1, relief="sunken")
+        self.gamme_frame = ctk.CTkFrame(form_frame, fg_color="#1E1E1E")
         self.gamme_frame.grid(row=5, column=0, columnspan=2, sticky="nsew", pady=5)
         self.gamme_vars = []
 
         # Boutons
-        tk.Button(self.btn_frame, text="Annuler", bg="#F44336", fg="white", font=("Arial", 11, "bold"), width=15, command=self.destroy).pack(side=tk.RIGHT, padx=20)
-        tk.Button(self.btn_frame, text="Créer l'OF", bg="#4CAF50", fg="white", font=("Arial", 11, "bold"), width=15, command=self.save).pack(side=tk.RIGHT, padx=10)
+        ctk.CTkButton(self.btn_frame, text="Annuler", fg_color="#F44336", text_color="white", font=("Arial", 11, "bold"), width=15, command=self.destroy).pack(side=tk.RIGHT, padx=20)
+        ctk.CTkButton(self.btn_frame, text="Créer l'OF", fg_color="#4CAF50", text_color="white", font=("Arial", 11, "bold"), width=15, command=self.save).pack(side=tk.RIGHT, padx=10)
         
         self.transient(parent)
         self.grab_set()
@@ -168,14 +171,14 @@ class AddOfDialog(tk.Toplevel):
             gammes = cursor.fetchall()
             
             if not gammes:
-                tk.Label(self.gamme_frame, text="Aucune gamme définie pour ce produit.", bg="#1E1E1E", fg="white").pack(pady=10)
+                ctk.CTkLabel(self.gamme_frame, text="Aucune gamme définie pour ce produit.", fg_color="#1E1E1E", text_color="white").pack(pady=10)
                 return
                 
             for step in gammes:
                 ordre, code_op, libel_op = step
                 libel_op = libel_op if libel_op else "Opération sans libellé"
                 
-                row_frame = tk.Frame(self.gamme_frame, bg="#1E1E1E")
+                row_frame = ctk.CTkFrame(self.gamme_frame, fg_color="#1E1E1E")
                 row_frame.pack(fill=tk.X, padx=10, pady=5)
                 
                 var_check = tk.BooleanVar(value=False)
@@ -185,7 +188,7 @@ class AddOfDialog(tk.Toplevel):
                 postes_compatibles = ["Libre (N'importe lequel)"] + [f"{r[0]} - {r[1]}" for r in cursor.fetchall()]
                 
                 var_poste = tk.StringVar(value=postes_compatibles[0])
-                cb_poste = ttk.Combobox(row_frame, textvariable=var_poste, values=postes_compatibles, state="disabled", width=30)
+                cb_poste = ctk.CTkComboBox(row_frame, textvariable=var_poste, values=postes_compatibles, state="disabled", width=30)
                 
                 def on_check_toggle(v=var_check, c=cb_poste):
                     if v.get():
@@ -193,7 +196,7 @@ class AddOfDialog(tk.Toplevel):
                     else:
                         c.config(state="disabled")
                         
-                chk = tk.Checkbutton(row_frame, text=libel_op, variable=var_check, command=on_check_toggle, bg="#1E1E1E", fg="#4da6ff", selectcolor="#2D2D30", font=("Arial", 11, "bold"), width=20, anchor="w")
+                chk = tk.Checkbutton(row_frame, text=libel_op, variable=var_check, command=on_check_toggle, fg_color="#1E1E1E", text_color="#4da6ff", selectcolor="#2D2D30", font=("Arial", 11, "bold"), width=20, anchor="w")
                 chk.pack(side=tk.LEFT)
                 
                 cb_poste.pack(side=tk.LEFT, padx=10)
@@ -281,16 +284,16 @@ class SotraglaceApp:
         
         # Configuration des Treeview
         self.style.configure("Treeview", 
-                             background="#333333", foreground="white", 
+                             fg_color="#333333", text_color="white", 
                              fieldbackground="#333333", rowheight=40, font=("Segoe UI", 12))
         self.style.configure("Treeview.Heading", 
-                             background="#444444", foreground="white", 
+                             fg_color="#444444", text_color="white", 
                              font=("Segoe UI", 12, "bold"))
         self.style.map("Treeview", background=[], foreground=[])
         
         # Couleurs des statuts
-        self.style.configure("TFrame", background="#1E1E1E")
-        self.root.configure(bg="#1E1E1E")
+        self.style.configure("TFrame", fg_color="#1E1E1E")
+        self.root.configure(fg_color="#1E1E1E")
         
         self.db_conn = None
         self.init_db()
@@ -442,9 +445,9 @@ class SotraglaceApp:
         }
         bg, fg = colors.get(status_type, ("#333333", "white"))
         if hasattr(self, 'lbl_scan_status') and self.lbl_scan_status:
-            self.lbl_scan_status.config(text=message, bg=bg, fg=fg)
+            self.lbl_scan_status.configure(text=message, fg_color=bg, text_color=fg)
         if hasattr(self, 'status_frame') and self.status_frame:
-            self.status_frame.config(bg=bg)
+            self.status_frame.config(fg_color=bg)
 
     def load_sage_data(self):
         if not os.path.exists(DATA_DIR):
@@ -564,37 +567,37 @@ class SotraglaceApp:
         self.notebook.bind("<<NotebookTabChanged>>", self.on_main_tab_changed)
         
         # Onglet 1 : Atelier
-        self.tab_atelier = tk.Frame(self.notebook, bg="#1E1E1E")
+        self.tab_atelier = ctk.CTkFrame(self.notebook, fg_color="#1E1E1E")
         self.notebook.add(self.tab_atelier, text="⚙️ ATELIER (Production)")
         
         # Onglet 2 : Bureau d'Étude
-        self.tab_be = tk.Frame(self.notebook, bg="#1E1E1E")
+        self.tab_be = ctk.CTkFrame(self.notebook, fg_color="#1E1E1E")
         self.notebook.add(self.tab_be, text="📐 BUREAU D'ÉTUDE (Nomenclatures)")
         
         # Construction de l'interface Atelier dans tab_atelier
         # 1. Header (Bandeau supérieur)
-        self.header_frame = tk.Frame(self.tab_atelier, bg="#2C3E50", height=80)
+        self.header_frame = ctk.CTkFrame(self.tab_atelier, fg_color="#2C3E50", height=80)
         self.header_frame.pack(fill=tk.X, side=tk.TOP)
         self.header_frame.pack_propagate(False)
         
-        self.lbl_title = tk.Label(self.header_frame, text=f"POSTE : {self.poste_nom_court.upper()}", 
-                                  font=("Arial", 24, "bold"), fg="white", bg="#2C3E50")
+        self.lbl_title = ctk.CTkLabel(self.header_frame, text=f"POSTE : {self.poste_nom_court.upper()}", 
+                                  font=("Arial", 24, "bold"), text_color="white", fg_color="#2C3E50")
         self.lbl_title.pack(side=tk.LEFT, padx=20, pady=15)
         
-        btn_poste = tk.Button(self.header_frame, text="⚙️ Changer de Poste", font=("Segoe UI", 12),
-                              bg="#FF9800", fg="white", relief=tk.FLAT, command=self.change_poste)
+        btn_poste = ctk.CTkButton(self.header_frame, text="⚙️ Changer de Poste", font=("Segoe UI", 12),
+                              fg_color="#FF9800", text_color="white", command=self.change_poste)
         btn_poste.pack(side=tk.RIGHT, padx=10, pady=20)
         
-        btn_refresh = tk.Button(self.header_frame, text="🔄 Actualiser CSV", font=("Segoe UI", 12),
-                                bg="#4CAF50", fg="white", relief=tk.FLAT, command=self.action_refresh)
+        btn_refresh = ctk.CTkButton(self.header_frame, text="🔄 Actualiser CSV", font=("Segoe UI", 12),
+                                fg_color="#4CAF50", text_color="white", command=self.action_refresh)
         btn_refresh.pack(side=tk.RIGHT, padx=10, pady=20)
         
-        btn_simu = tk.Button(self.header_frame, text="🔫 Test Scan", font=("Segoe UI", 12),
-                             bg="#9C27B0", fg="white", relief=tk.FLAT, command=self.open_scan_simulator)
+        btn_simu = ctk.CTkButton(self.header_frame, text="🔫 Test Scan", font=("Segoe UI", 12),
+                             fg_color="#9C27B0", text_color="white", command=self.open_scan_simulator)
         btn_simu.pack(side=tk.RIGHT, padx=10, pady=20)
 
         # 2. Body (Zone centrale)
-        self.body_frame = tk.Frame(self.tab_atelier, bg="#1E1E1E")
+        self.body_frame = ctk.CTkFrame(self.tab_atelier, fg_color="#1E1E1E")
         self.body_frame.pack(expand=True, fill=tk.BOTH, padx=10, pady=10)
         
         self.body_frame.columnconfigure(0, weight=6) # Gauche 60%
@@ -602,21 +605,21 @@ class SotraglaceApp:
         self.body_frame.rowconfigure(0, weight=1)
         
         # --- BLOC DROIT (Vue Globale des Commandes) ---
-        self.right_col = tk.Frame(self.body_frame, bg="#1E1E1E")
+        self.right_col = ctk.CTkFrame(self.body_frame, fg_color="#1E1E1E")
         self.right_col.grid(row=0, column=1, sticky="nsew", padx=10, pady=5)
         
-        search_frame = tk.Frame(self.right_col, bg="#1E1E1E")
+        search_frame = ctk.CTkFrame(self.right_col, fg_color="#1E1E1E")
         search_frame.pack(fill=tk.X, pady=(0, 10))
-        tk.Label(search_frame, text="LISTE DES COMMANDES", font=("Segoe UI", 16, "bold"), fg="#CCCCCC", bg="#1E1E1E").pack(side=tk.LEFT)
+        ctk.CTkLabel(search_frame, text="LISTE DES COMMANDES", font=("Segoe UI", 16, "bold"), text_color="#CCCCCC", fg_color="#1E1E1E").pack(side=tk.LEFT)
         
         self.search_var = tk.StringVar()
         self.search_var.trace("w", self.on_search_change)
-        self.search_entry = tk.Entry(search_frame, textvariable=self.search_var, font=("Segoe UI", 12), width=15)
+        self.search_entry = ctk.CTkEntry(search_frame, textvariable=self.search_var, font=("Segoe UI", 12), width=15)
         self.search_entry.pack(side=tk.RIGHT)
-        tk.Label(search_frame, text="Recherche:", font=("Segoe UI", 12), bg="#1E1E1E", fg="white").pack(side=tk.RIGHT, padx=5)
+        ctk.CTkLabel(search_frame, text="Recherche:", font=("Segoe UI", 12), fg_color="#1E1E1E", text_color="white").pack(side=tk.RIGHT, padx=5)
 
         cols_cmd = ("commande", "date", "client", "avancement")
-        tree_cmd_frame = tk.Frame(self.right_col)
+        tree_cmd_frame = ctk.CTkFrame(self.right_col)
         tree_cmd_frame.pack(expand=True, fill=tk.BOTH)
         
         scroll_cmd = ttk.Scrollbar(tree_cmd_frame, orient="vertical")
@@ -651,27 +654,27 @@ class SotraglaceApp:
         sel_blue = '#005A9E'
         
         # --- BLOC GAUCHE (Détails de la commande et Focus Scan) ---
-        self.left_col = tk.Frame(self.body_frame, bg="#1E1E1E")
+        self.left_col = ctk.CTkFrame(self.body_frame, fg_color="#1E1E1E")
         self.left_col.grid(row=0, column=0, sticky="nsew", padx=10, pady=5)
         
         # Détails Commande (Haut)
-        cmd_info_frame = tk.Frame(self.left_col, bg="#2D2D30", relief=tk.RAISED, borderwidth=1)
+        cmd_info_frame = ctk.CTkFrame(self.left_col, fg_color="#2D2D30")
         cmd_info_frame.pack(fill=tk.X, pady=(0, 10), ipady=5)
         
-        self.lbl_commande = tk.Label(cmd_info_frame, text="Commande : --", font=("Arial", 16, "bold"), bg="#2D2D30", fg="#4da6ff", anchor="w")
+        self.lbl_commande = ctk.CTkLabel(cmd_info_frame, text="Commande : --", font=("Arial", 16, "bold"), fg_color="#2D2D30", text_color="#4da6ff", anchor="w")
         self.lbl_commande.pack(fill=tk.X, padx=15, pady=2)
         
-        self.lbl_client = tk.Label(cmd_info_frame, text="Client : --", font=("Arial", 16), bg="#2D2D30", fg="white", anchor="w")
+        self.lbl_client = ctk.CTkLabel(cmd_info_frame, text="Client : --", font=("Arial", 16), fg_color="#2D2D30", text_color="white", anchor="w")
         self.lbl_client.pack(fill=tk.X, padx=15, pady=2)
         
         # Tableau Articles (Milieu)
-        self.lbl_lignes_title = tk.Label(self.left_col, text="ARTICLES DE LA COMMANDE", font=("Segoe UI", 12, "bold"), fg="#CCCCCC", bg="#1E1E1E", anchor="w")
+        self.lbl_lignes_title = ctk.CTkLabel(self.left_col, text="ARTICLES DE LA COMMANDE", font=("Segoe UI", 12, "bold"), text_color="#CCCCCC", fg_color="#1E1E1E", anchor="w")
         self.lbl_lignes_title.pack(fill=tk.X, pady=5)
         
         cols_lignes = ("ligne", "ref", "designation", "dim", "qte", "statut", "situation")
         # Changement : selectmode="browse" pour pouvoir cliquer sur un article
         
-        tree_lignes_frame = tk.Frame(self.left_col)
+        tree_lignes_frame = ctk.CTkFrame(self.left_col)
         tree_lignes_frame.pack(fill=tk.X, pady=(0, 15))
         
         scroll_lignes = ttk.Scrollbar(tree_lignes_frame, orient="vertical")
@@ -701,21 +704,21 @@ class SotraglaceApp:
         self.tree_lignes.pack(side=tk.LEFT, fill=tk.X, expand=True)
         
         self.tree_lignes.bind("<<TreeviewSelect>>", lambda e: [self._update_selection_tags(self.tree_lignes), self.on_article_select(e)])        
-        self.actions_article_frame = tk.Frame(self.left_col, bg="#1E1E1E")
+        self.actions_article_frame = ctk.CTkFrame(self.left_col, fg_color="#1E1E1E")
         self.actions_article_frame.pack(fill=tk.X, pady=(0, 10))
         
-        tk.Label(self.actions_article_frame, text="Action Manuelle :", font=("Segoe UI", 10, "bold"), fg="white", bg="#1E1E1E").pack(side=tk.LEFT, padx=5)
+        ctk.CTkLabel(self.actions_article_frame, text="Action Manuelle :", font=("Segoe UI", 10, "bold"), text_color="white", fg_color="#1E1E1E").pack(side=tk.LEFT, padx=5)
         
-        self.btn_scan_one = tk.Button(self.actions_article_frame, text="+1 Scanner", bg="#1E88E5", fg="white", font=("Arial", 10, "bold"), command=lambda: self.manual_scan(1))
+        self.btn_scan_one = ctk.CTkButton(self.actions_article_frame, text="+1 Scanner", fg_color="#1E88E5", text_color="white", font=("Arial", 10, "bold"), command=lambda: self.manual_scan(1))
         self.btn_scan_one.pack(side=tk.LEFT, padx=5)
         
-        self.btn_scan_all = tk.Button(self.actions_article_frame, text="++ TOUT Scanner", bg="#388E3C", fg="white", font=("Arial", 10, "bold"), command=lambda: self.manual_scan("all"))
+        self.btn_scan_all = ctk.CTkButton(self.actions_article_frame, text="++ TOUT Scanner", fg_color="#388E3C", text_color="white", font=("Arial", 10, "bold"), command=lambda: self.manual_scan("all"))
         self.btn_scan_all.pack(side=tk.LEFT, padx=5)
         
-        self.btn_unscan_one = tk.Button(self.actions_article_frame, text="-1 Descanner", bg="#F57C00", fg="white", font=("Arial", 10, "bold"), command=lambda: self.manual_unscan(1))
+        self.btn_unscan_one = ctk.CTkButton(self.actions_article_frame, text="-1 Descanner", fg_color="#F57C00", text_color="white", font=("Arial", 10, "bold"), command=lambda: self.manual_unscan(1))
         self.btn_unscan_one.pack(side=tk.LEFT, padx=5)
         
-        self.btn_unscan_all = tk.Button(self.actions_article_frame, text="-- TOUT Descanner", bg="#D32F2F", fg="white", font=("Arial", 10, "bold"), command=lambda: self.manual_unscan("all"))
+        self.btn_unscan_all = ctk.CTkButton(self.actions_article_frame, text="-- TOUT Descanner", fg_color="#D32F2F", text_color="white", font=("Arial", 10, "bold"), command=lambda: self.manual_unscan("all"))
         self.btn_unscan_all.pack(side=tk.LEFT, padx=5)
         
         self.tree_lignes.tag_configure('terminee', background='#388E3C', foreground='white')
@@ -741,72 +744,72 @@ class SotraglaceApp:
         self.tree_lignes.tag_configure('default_sel', background=sel_blue, foreground='white', font=font_sel)
 
         # Focus Industriel / Radar (Bas gauche)
-        self.bottom_left_container = tk.Frame(self.left_col, bg="#1E1E1E")
+        self.bottom_left_container = ctk.CTkFrame(self.left_col, fg_color="#1E1E1E")
         self.bottom_left_container.pack(expand=True, fill=tk.BOTH)
         
         # --- FRAME 1 : Le Radar / Frise globale (Affiché par défaut) ---
-        self.timeline_frame = tk.Frame(self.bottom_left_container, bg="#1E1E1E")
+        self.timeline_frame = ctk.CTkFrame(self.bottom_left_container, fg_color="#1E1E1E")
         self.timeline_frame.place(relx=0, rely=0, relwidth=1, relheight=1)
         
-        self.lbl_article_details = tk.Label(self.timeline_frame, text="Sélectionnez un article pour voir son parcours", font=("Arial", 16, "bold"), bg="#1E1E1E", fg="#4da6ff", wraplength=500, justify="center")
+        self.lbl_article_details = ctk.CTkLabel(self.timeline_frame, text="Sélectionnez un article pour voir son parcours", font=("Arial", 16, "bold"), fg_color="#1E1E1E", text_color="#4da6ff", wraplength=500, justify="center")
         self.lbl_article_details.pack(pady=5)
         
-        self.frise_frame = tk.Frame(self.timeline_frame, bg="#1E1E1E")
+        self.frise_frame = ctk.CTkFrame(self.timeline_frame, fg_color="#1E1E1E")
         self.frise_frame.pack(expand=True, fill=tk.BOTH, padx=5, pady=5)
         
         self.timeline_blocks = {}
         postes_list = get_postes_disponibles()
         for i, poste in enumerate(postes_list):
             poste_nom = poste.split("-")[-1].strip()
-            block = tk.Frame(self.frise_frame, bg="#2D2D30", relief=tk.RAISED, borderwidth=2)
+            block = ctk.CTkFrame(self.frise_frame, fg_color="#2D2D30")
             self.frise_frame.columnconfigure(i, weight=1)
             block.grid(row=0, column=i, sticky="nsew", padx=2, pady=5)
             
-            lbl_nom = tk.Label(block, text=poste_nom, font=("Arial", 11, "bold"), bg="#2D2D30", fg="white", wraplength=100)
+            lbl_nom = ctk.CTkLabel(block, text=poste_nom, font=("Arial", 11, "bold"), fg_color="#2D2D30", text_color="white", wraplength=100)
             lbl_nom.pack(pady=(10, 0))
             
-            lbl_count = tk.Label(block, text="0 / 0", font=("Arial", 22, "bold"), bg="#2D2D30", fg="white")
+            lbl_count = ctk.CTkLabel(block, text="0 / 0", font=("Arial", 22, "bold"), fg_color="#2D2D30", text_color="white")
             lbl_count.pack(expand=True, pady=5)
             
             self.timeline_blocks[poste] = {'frame': block, 'lbl_nom': lbl_nom, 'lbl_count': lbl_count}
             
         # --- FRAME 2 : Focus Flash Scan (Caché par défaut) ---
-        self.scan_flash_frame = tk.Frame(self.bottom_left_container, bg="#1E1E1E")
+        self.scan_flash_frame = ctk.CTkFrame(self.bottom_left_container, fg_color="#1E1E1E")
         
         self.scan_flash_frame.columnconfigure(0, weight=1)
         self.scan_flash_frame.columnconfigure(1, weight=1)
         
-        dim_info = tk.Frame(self.scan_flash_frame, bg="#1E1E1E")
+        dim_info = ctk.CTkFrame(self.scan_flash_frame, fg_color="#1E1E1E")
         dim_info.grid(row=0, column=0, sticky="nsew", padx=10)
         
-        self.lbl_designation = tk.Label(dim_info, text="Désignation : --", font=("Arial", 16), bg="#1E1E1E", fg="white", wraplength=300, justify="left")
+        self.lbl_designation = ctk.CTkLabel(dim_info, text="Désignation : --", font=("Arial", 16), fg_color="#1E1E1E", text_color="white", wraplength=300, justify="left")
         self.lbl_designation.pack(pady=10)
         
-        self.dim_frame = tk.Frame(dim_info, bg="#1E1E1E", highlightbackground="#4da6ff", highlightthickness=2)
+        self.dim_frame = ctk.CTkFrame(dim_info, fg_color="#1E1E1E")
         self.dim_frame.pack(fill=tk.X, pady=5)
-        self.lbl_dim = tk.Label(self.dim_frame, text="DIMENSIONS\n-- x --", font=("Arial", 22, "bold"), bg="#1E1E1E", fg="#4da6ff")
+        self.lbl_dim = ctk.CTkLabel(self.dim_frame, text="DIMENSIONS\n-- x --", font=("Arial", 22, "bold"), fg_color="#1E1E1E", text_color="#4da6ff")
         self.lbl_dim.pack(pady=10)
 
-        prog_info = tk.Frame(self.scan_flash_frame, bg="#1E1E1E")
+        prog_info = ctk.CTkFrame(self.scan_flash_frame, fg_color="#1E1E1E")
         prog_info.grid(row=0, column=1, sticky="nsew", padx=10)
         
-        self.lbl_progression_title = tk.Label(prog_info, text="PROGRESSION", font=("Arial", 14), bg="#1E1E1E", fg="#AAAAAA")
+        self.lbl_progression_title = ctk.CTkLabel(prog_info, text="PROGRESSION", font=("Arial", 14), fg_color="#1E1E1E", text_color="#AAAAAA")
         self.lbl_progression_title.pack(pady=(10, 0))
         
-        self.lbl_progression = tk.Label(prog_info, text="0 / 0", font=("Arial", 70, "bold"), bg="#1E1E1E", fg="white")
+        self.lbl_progression = ctk.CTkLabel(prog_info, text="0 / 0", font=("Arial", 80, "bold"), fg_color="#1E1E1E", text_color="white")
         self.lbl_progression.pack(expand=True)
         
         # 3. Footer (Bandeau inférieur)
-        self.footer_frame = tk.Frame(self.tab_atelier, bg="#333333", height=120)
+        self.footer_frame = ctk.CTkFrame(self.tab_atelier, fg_color="#333333", height=120)
         self.footer_frame.pack(fill=tk.X, side=tk.BOTTOM)
         self.footer_frame.pack_propagate(False)
         
-        self.lbl_scan_status = tk.Label(self.footer_frame, text="En attente de scan...", 
-                                        font=("Arial", 22, "bold"), fg="white", bg="#333333")
+        self.lbl_scan_status = ctk.CTkLabel(self.footer_frame, text="En attente de scan...", 
+                                        font=("Arial", 22, "bold"), text_color="white", fg_color="#333333")
         self.lbl_scan_status.pack(pady=(15, 10))
         
         self.scan_var = tk.StringVar()
-        self.scan_entry = tk.Entry(self.footer_frame, textvariable=self.scan_var, font=("Arial", 18), justify="center", width=30)
+        self.scan_entry = ctk.CTkEntry(self.footer_frame, textvariable=self.scan_var, font=("Arial", 18), justify="center", width=30)
         self.scan_entry.pack(pady=5)
         self.scan_entry.bind("<Return>", self.on_scan)
         
@@ -817,24 +820,24 @@ class SotraglaceApp:
         
     def build_be_ui(self):
         # Header BE
-        header_be = tk.Frame(self.tab_be, bg="#2C3E50", height=80)
+        header_be = ctk.CTkFrame(self.tab_be, fg_color="#2C3E50", height=80)
         header_be.pack(fill=tk.X, side=tk.TOP)
         header_be.pack_propagate(False)
-        self.lbl_be_header = tk.Label(header_be, text="📐 BUREAU D'ÉTUDE", font=("Arial", 20, "bold"), fg="white", bg="#2C3E50")
+        self.lbl_be_header = ctk.CTkLabel(header_be, text="📐 BUREAU D'ÉTUDE", font=("Arial", 20, "bold"), text_color="white", fg_color="#2C3E50")
         self.lbl_be_header.pack(side=tk.LEFT, padx=20, pady=20)
         
         # Style pour le notebook BE
         style = ttk.Style()
-        style.configure("BENotebook.TNotebook", background="#1E1E1E")
+        style.configure("BENotebook.TNotebook", fg_color="#1E1E1E")
         style.configure("BENotebook.TNotebook.Tab", padding=[15, 5], font=('Arial', 11, 'bold'))
         
         # Notebook BE
         self.be_notebook = ttk.Notebook(self.tab_be, style="BENotebook.TNotebook")
         self.be_notebook.pack(expand=True, fill=tk.BOTH, padx=10, pady=10)
         
-        self.tab_be_gen = tk.Frame(self.be_notebook, bg="#1E1E1E")
-        self.tab_be_matrice = tk.Frame(self.be_notebook, bg="#1E1E1E")
-        self.tab_be_charge = tk.Frame(self.be_notebook, bg="#1E1E1E")
+        self.tab_be_gen = ctk.CTkFrame(self.be_notebook, fg_color="#1E1E1E")
+        self.tab_be_matrice = ctk.CTkFrame(self.be_notebook, fg_color="#1E1E1E")
+        self.tab_be_charge = ctk.CTkFrame(self.be_notebook, fg_color="#1E1E1E")
         
         self.be_notebook.add(self.tab_be_gen, text="📝 Génération OF")
         self.be_notebook.add(self.tab_be_matrice, text="📊 Matrice Commandes")
@@ -862,7 +865,7 @@ class SotraglaceApp:
     def on_be_tab_changed(self, event):
         tab_id = self.be_notebook.select()
         tab_text = self.be_notebook.tab(tab_id, "text")
-        self.lbl_be_header.config(text=f"📐 BUREAU D'ÉTUDE - {tab_text}")
+        self.lbl_be_header.configure(text=f"📐 BUREAU D'ÉTUDE - {tab_text}")
         
         if "Matrice" in tab_text:
             self.refresh_be_matrice()
@@ -871,7 +874,7 @@ class SotraglaceApp:
 
     def build_be_gen_ui(self):
         # Body BE Gen
-        body_be = tk.Frame(self.tab_be_gen, bg="#1E1E1E")
+        body_be = ctk.CTkFrame(self.tab_be_gen, fg_color="#1E1E1E")
         body_be.pack(expand=True, fill=tk.BOTH, padx=10, pady=10)
         
         body_be.columnconfigure(0, weight=3) # Commandes (30%)
@@ -879,12 +882,12 @@ class SotraglaceApp:
         body_be.rowconfigure(0, weight=1)
         
         # --- Gauche : Commandes ---
-        left_be = tk.Frame(body_be, bg="#2D2D30")
+        left_be = ctk.CTkFrame(body_be, fg_color="#2D2D30")
         left_be.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
-        tk.Label(left_be, text="COMMANDES SAGE", font=("Segoe UI", 12, "bold"), fg="#4da6ff", bg="#2D2D30").pack(pady=10)
+        ctk.CTkLabel(left_be, text="COMMANDES SAGE", font=("Segoe UI", 12, "bold"), text_color="#4da6ff", fg_color="#2D2D30").pack(pady=10)
         
         cols_be_cmd = ("cmd", "client")
-        tree_be_cmd_frame = tk.Frame(left_be)
+        tree_be_cmd_frame = ctk.CTkFrame(left_be)
         tree_be_cmd_frame.pack(expand=True, fill=tk.BOTH, padx=10, pady=10)
         
         scroll_be_cmd = ttk.Scrollbar(tree_be_cmd_frame, orient="vertical")
@@ -914,14 +917,14 @@ class SotraglaceApp:
         sel_blue = '#005A9E'
         
         # --- Droite : Détails ---
-        right_be = tk.Frame(body_be, bg="#2D2D30")
+        right_be = ctk.CTkFrame(body_be, fg_color="#2D2D30")
         right_be.grid(row=0, column=1, sticky="nsew")
         
         # Haut: Lignes Sage
-        tk.Label(right_be, text="LIGNES COMMERCIALES (SAGE)", font=("Segoe UI", 12, "bold"), fg="#CCCCCC", bg="#2D2D30").pack(pady=(10,0))
+        ctk.CTkLabel(right_be, text="LIGNES COMMERCIALES (SAGE)", font=("Segoe UI", 12, "bold"), text_color="#CCCCCC", fg_color="#2D2D30").pack(pady=(10,0))
         
         cols_be_sage = ("ligne", "ref", "designation", "dim", "qte")
-        tree_be_sage_frame = tk.Frame(right_be)
+        tree_be_sage_frame = ctk.CTkFrame(right_be)
         tree_be_sage_frame.pack(fill=tk.X, padx=10, pady=5)
         
         scroll_be_sage = ttk.Scrollbar(tree_be_sage_frame, orient="vertical")
@@ -947,18 +950,18 @@ class SotraglaceApp:
         self.tree_be_sage.tag_configure('default_sel', background=sel_blue, foreground='white', font=font_sel)
         
         # Bas: Sous-ensembles (OF)
-        tk.Label(right_be, text="SOUS-ENSEMBLES DE FABRICATION (Nomenclature de l'Atelier)", font=("Segoe UI", 12, "bold"), fg="#4CAF50", bg="#2D2D30").pack(pady=(20,0))
+        ctk.CTkLabel(right_be, text="SOUS-ENSEMBLES DE FABRICATION (Nomenclature de l'Atelier)", font=("Segoe UI", 12, "bold"), text_color="#4CAF50", fg_color="#2D2D30").pack(pady=(20,0))
         
         # Actions BE
-        action_frame = tk.Frame(right_be, bg="#2D2D30")
+        action_frame = ctk.CTkFrame(right_be, fg_color="#2D2D30")
         action_frame.pack(fill=tk.X, padx=10, pady=5)
-        btn_add_of = tk.Button(action_frame, text="➕ Ajouter un Produit (OF)", bg="#4CAF50", fg="white", font=("Arial", 10, "bold"), command=self.add_of_dialog)
+        btn_add_of = ctk.CTkButton(action_frame, text="➕ Ajouter un Produit (OF)", fg_color="#4CAF50", text_color="white", font=("Arial", 10, "bold"), command=self.add_of_dialog)
         btn_add_of.pack(side=tk.LEFT, padx=5)
-        btn_print = tk.Button(action_frame, text="🖨️ Imprimer Étiquettes", bg="#FF9800", fg="white", font=("Arial", 10, "bold"))
+        btn_print = ctk.CTkButton(action_frame, text="🖨️ Imprimer Étiquettes", fg_color="#FF9800", text_color="white", font=("Arial", 10, "bold"))
         btn_print.pack(side=tk.LEFT, padx=5)
         
         cols_be_of = ("id", "prod", "design", "observ", "qte", "parcours")
-        tree_be_of_frame = tk.Frame(right_be)
+        tree_be_of_frame = ctk.CTkFrame(right_be)
         tree_be_of_frame.pack(expand=True, fill=tk.BOTH, padx=10, pady=(5, 10))
         
         scroll_be_of = ttk.Scrollbar(tree_be_of_frame, orient="vertical")
@@ -1000,7 +1003,7 @@ class SotraglaceApp:
             with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
                 json.dump({'poste': self.poste_actuel}, f)
                 
-            self.lbl_title.config(text=f"TABLEAU DE BORD | POSTE : {self.poste_nom_court.upper()}")
+            self.lbl_title.configure(text=f"TABLEAU DE BORD | POSTE : {self.poste_nom_court.upper()}")
             self.root.title(f"Sotraglace - Tableau de Bord Production - Poste : {self.poste_actuel}")
             
             self.load_scans_cache()
@@ -1232,15 +1235,15 @@ class SotraglaceApp:
             self.update_status_bar("success", "Ordre de Fabrication créé avec succès !")
 
     def build_be_matrice_ui(self):
-        header_mat = tk.Frame(self.tab_be_matrice, bg="#2C3E50", height=80)
+        header_mat = ctk.CTkFrame(self.tab_be_matrice, fg_color="#2C3E50", height=80)
         header_mat.pack(fill=tk.X, side=tk.TOP)
         header_mat.pack_propagate(False)
-        tk.Label(header_mat, text="📊 BUREAU D'ÉTUDE - MATRICE COMMANDES", font=("Arial", 20, "bold"), fg="white", bg="#2C3E50").pack(side=tk.LEFT, padx=20, pady=20)
+        ctk.CTkLabel(header_mat, text="📊 BUREAU D'ÉTUDE - MATRICE COMMANDES", font=("Arial", 20, "bold"), text_color="white", fg_color="#2C3E50").pack(side=tk.LEFT, padx=20, pady=20)
         
-        btn_refresh = tk.Button(header_mat, text="🔄 Actualiser", font=("Arial", 12, "bold"), bg="#4da6ff", fg="white", command=self.refresh_be_matrice)
+        btn_refresh = ctk.CTkButton(header_mat, text="🔄 Actualiser", font=("Arial", 12, "bold"), fg_color="#4da6ff", text_color="white", command=self.refresh_be_matrice)
         btn_refresh.pack(side=tk.RIGHT, padx=20, pady=20)
         
-        body_mat = tk.Frame(self.tab_be_matrice, bg="#1E1E1E")
+        body_mat = ctk.CTkFrame(self.tab_be_matrice, fg_color="#1E1E1E")
         body_mat.pack(expand=True, fill=tk.BOTH, padx=10, pady=10)
         
         scroll_y = ttk.Scrollbar(body_mat, orient="vertical")
@@ -1410,22 +1413,22 @@ class SotraglaceApp:
 
 
     def build_be_charge_ui(self):
-        header_charge = tk.Frame(self.tab_be_charge, bg="#2C3E50", height=80)
+        header_charge = ctk.CTkFrame(self.tab_be_charge, fg_color="#2C3E50", height=80)
         header_charge.pack(fill=tk.X, side=tk.TOP)
         header_charge.pack_propagate(False)
-        tk.Label(header_charge, text="🏭 BUREAU D'ÉTUDE - CHARGE MACHINES", font=("Arial", 20, "bold"), fg="white", bg="#2C3E50").pack(side=tk.LEFT, padx=20, pady=20)
+        ctk.CTkLabel(header_charge, text="🏭 BUREAU D'ÉTUDE - CHARGE MACHINES", font=("Arial", 20, "bold"), text_color="white", fg_color="#2C3E50").pack(side=tk.LEFT, padx=20, pady=20)
         
-        btn_refresh = tk.Button(header_charge, text="🔄 Actualiser", font=("Arial", 12, "bold"), bg="#4da6ff", fg="white", command=self.refresh_be_charge)
+        btn_refresh = ctk.CTkButton(header_charge, text="🔄 Actualiser", font=("Arial", 12, "bold"), fg_color="#4da6ff", text_color="white", command=self.refresh_be_charge)
         btn_refresh.pack(side=tk.RIGHT, padx=20, pady=20)
         
-        body = tk.Frame(self.tab_be_charge, bg="#1E1E1E")
+        body = ctk.CTkFrame(self.tab_be_charge, fg_color="#1E1E1E")
         body.pack(expand=True, fill=tk.BOTH, padx=10, pady=10)
         
-        left_frame = tk.Frame(body, bg="#2D2D30", width=300)
+        left_frame = ctk.CTkFrame(body, fg_color="#2D2D30", width=300)
         left_frame.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 10))
         left_frame.pack_propagate(False)
         
-        tk.Label(left_frame, text="SÉLECTION MACHINE", font=("Segoe UI", 12, "bold"), fg="#4da6ff", bg="#2D2D30").pack(pady=10)
+        ctk.CTkLabel(left_frame, text="SÉLECTION MACHINE", font=("Segoe UI", 12, "bold"), text_color="#4da6ff", fg_color="#2D2D30").pack(pady=10)
         
         self.tree_machines = ttk.Treeview(left_frame, columns=("machine",), show="headings")
         self.tree_machines.heading("machine", text="Poste / Machine")
@@ -1434,7 +1437,7 @@ class SotraglaceApp:
         
         self.tree_machines.tag_configure('default_sel', background='#005A9E', foreground='white', font=("Segoe UI", 11, "bold underline"))
         
-        right_frame = tk.Frame(body, bg="#1E1E1E")
+        right_frame = ctk.CTkFrame(body, fg_color="#1E1E1E")
         right_frame.pack(side=tk.LEFT, expand=True, fill=tk.BOTH)
         
         right_frame.columnconfigure(0, weight=1)
@@ -1442,9 +1445,9 @@ class SotraglaceApp:
         right_frame.columnconfigure(2, weight=1)
         right_frame.rowconfigure(1, weight=1)
         
-        tk.Label(right_frame, text="📥 PAS ENCORE DÉMARRÉ (A Faire)", bg="#424242", fg="white", font=("Arial", 12, "bold")).grid(row=0, column=0, sticky="ew", padx=5, pady=5)
-        tk.Label(right_frame, text="⏳ EN COURS (Scans démarrés)", bg="#F57C00", fg="white", font=("Arial", 12, "bold")).grid(row=0, column=1, sticky="ew", padx=5, pady=5)
-        tk.Label(right_frame, text="✅ TERMINÉ", bg="#388E3C", fg="white", font=("Arial", 12, "bold")).grid(row=0, column=2, sticky="ew", padx=5, pady=5)
+        ctk.CTkLabel(right_frame, text="📥 PAS ENCORE DÉMARRÉ (A Faire)", fg_color="#424242", text_color="white", font=("Arial", 12, "bold")).grid(row=0, column=0, sticky="ew", padx=5, pady=5)
+        ctk.CTkLabel(right_frame, text="⏳ EN COURS (Scans démarrés)", fg_color="#F57C00", text_color="white", font=("Arial", 12, "bold")).grid(row=0, column=1, sticky="ew", padx=5, pady=5)
+        ctk.CTkLabel(right_frame, text="✅ TERMINÉ", fg_color="#388E3C", text_color="white", font=("Arial", 12, "bold")).grid(row=0, column=2, sticky="ew", padx=5, pady=5)
         
         self.list_attente = tk.Listbox(right_frame, bg="#2D2D30", fg="white", font=("Arial", 10))
         self.list_encours = tk.Listbox(right_frame, bg="#2D2D30", fg="white", font=("Arial", 10))
@@ -1719,10 +1722,10 @@ class SotraglaceApp:
         # Mettre à jour l'en-tête
         entete = self.sage_data['entetes'].get(do_piece, {})
         client = entete.get("DO_Tiers", "Inconnu")
-        self.lbl_commande.config(text=f"Commande : {do_piece}")
-        self.lbl_client.config(text=f"Client : {client}")
+        self.lbl_commande.configure(text=f"Commande : {do_piece}")
+        self.lbl_client.configure(text=f"Client : {client}")
         
-        self.lbl_lignes_title.config(text=f"ARTICLES DE LA COMMANDE : {do_piece}")
+        self.lbl_lignes_title.configure(text=f"ARTICLES DE LA COMMANDE : {do_piece}")
         self.update_lines_view(do_piece)
         
         children = self.tree_lignes.get_children()
@@ -1735,7 +1738,7 @@ class SotraglaceApp:
             for widget in self.timeline_frame.winfo_children():
                 if widget != self.timeline_frame.winfo_children()[0]: # Keep title
                     widget.destroy()
-            self.lbl_article_details.config(text="Aucun article à produire pour ce poste sur cette commande.")
+            self.lbl_article_details.configure(text="Aucun article à produire pour ce poste sur cette commande.")
             self.show_timeline()
             
         self.scan_entry.focus_set()
@@ -1761,7 +1764,7 @@ class SotraglaceApp:
         prod, design, observ, qte = of_data
         dim = observ if observ else "--"
         
-        self.lbl_article_details.config(text=f"OF: {key} - {prod} - {design}\\nDimensions : {dim} | Qté: {qte}")
+        self.lbl_article_details.configure(text=f"OF: {key} - {prod} - {design}\\nDimensions : {dim} | Qté: {qte}")
         
         # Reconstruire dynamiquement la timeline pour CET OF
         for widget in self.timeline_frame.winfo_children():
@@ -1769,21 +1772,21 @@ class SotraglaceApp:
                 widget.destroy()
                 
         self.timeline_blocks = {}
-        timeline_container = tk.Frame(self.timeline_frame, bg="#2D2D30")
+        timeline_container = ctk.CTkFrame(self.timeline_frame, fg_color="#2D2D30")
         timeline_container.pack(expand=True, fill=tk.BOTH, padx=20, pady=10)
         
         cursor.execute("SELECT CodeOp FROM OF_Gammes WHERE ID_OF = ? ORDER BY Ordre", (key,))
         routing = cursor.fetchall()
         
         for (op,) in routing:
-            block = tk.Frame(timeline_container, bg="#1E1E1E", bd=1, relief=tk.SOLID)
+            block = ctk.CTkFrame(timeline_container, fg_color="#1E1E1E")
             block.pack(side=tk.LEFT, expand=True, fill=tk.BOTH, padx=2)
             
             # Fetch operation name
             cursor.execute("SELECT LibelOp FROM Operations WHERE RefOp = ?", (op,))
             op_row = cursor.fetchone()
             op_name = op_row[0] if op_row else f"{op} (Non défini)"
-            lbl_nom = tk.Label(block, text=op_name, font=("Arial", 9, "bold"), fg="white", bg="#1E1E1E", wraplength=80)
+            lbl_nom = ctk.CTkLabel(block, text=op_name, font=("Arial", 9, "bold"), text_color="white", fg_color="#1E1E1E", wraplength=80)
             lbl_nom.pack(pady=(10,5))
             
             # Count total scans for this operation for this OF
@@ -1794,17 +1797,17 @@ class SotraglaceApp:
             ''', (key, op))
             count = cursor.fetchone()[0]
             
-            lbl_count = tk.Label(block, text=f"{count} / {qte}", font=("Arial", 14, "bold"), fg="#CCCCCC", bg="#1E1E1E")
+            lbl_count = ctk.CTkLabel(block, text=f"{count} / {qte}", font=("Arial", 14, "bold"), text_color="#CCCCCC", fg_color="#1E1E1E")
             lbl_count.pack(expand=True, pady=5)
             
             # Highlight if it's our current operation
             mon_op = self.get_mon_op()
             if op == mon_op:
-                block.config(bg="#004d40", highlightbackground="#00bfa5", highlightthickness=2)
-                lbl_nom.config(bg="#004d40")
-                lbl_count.config(bg="#004d40", fg="white")
+                block.config(fg_color="#004d40", highlightbackground="#00bfa5", highlightthickness=2)
+                lbl_nom.config(fg_color="#004d40")
+                lbl_count.config(fg_color="#004d40", text_color="white")
                 if count >= qte:
-                    lbl_count.config(fg="#81c784") # Green if done
+                    lbl_count.config(text_color="#81c784") # Green if done
                 
         if force_show:
             self.show_timeline()
@@ -1838,27 +1841,27 @@ class SotraglaceApp:
         dim = observ if observ else "--"
         barcode = key # The QR code is just the ID_OF (e.g., "OF-1000")
         
-        sim_win = tk.Toplevel(self.root)
+        sim_win = ctk.CTkToplevel(self.root)
         sim_win.title("Simulateur de Scan")
         sim_win.geometry("450x320")
-        sim_win.config(bg="#1E1E1E")
+        sim_win.config(fg_color="#1E1E1E")
         
-        tk.Label(sim_win, text="SIMULATEUR DE DOUCHETTE", font=("Arial", 14, "bold"), bg="#1E1E1E", fg="#FF9800").pack(pady=10)
+        ctk.CTkLabel(sim_win, text="SIMULATEUR DE DOUCHETTE", font=("Arial", 14, "bold"), fg_color="#1E1E1E", text_color="#FF9800").pack(pady=10)
         
-        info_frame = tk.Frame(sim_win, bg="#2D2D30", padx=10, pady=10)
+        info_frame = ctk.CTkFrame(sim_win, fg_color="#2D2D30", padx=10, pady=10)
         info_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
         
-        tk.Label(info_frame, text=f"Désignation: {designation}", font=("Arial", 12), bg="#2D2D30", fg="white", wraplength=350, justify="left").pack(anchor="w", pady=2)
-        tk.Label(info_frame, text=f"Réf: {prod}", font=("Arial", 12), bg="#2D2D30", fg="#CCCCCC").pack(anchor="w", pady=2)
-        tk.Label(info_frame, text=f"Dim: {dim}", font=("Arial", 12), bg="#2D2D30", fg="#CCCCCC").pack(anchor="w", pady=2)
+        ctk.CTkLabel(info_frame, text=f"Désignation: {designation}", font=("Arial", 12), fg_color="#2D2D30", text_color="white", wraplength=350, justify="left").pack(anchor="w", pady=2)
+        ctk.CTkLabel(info_frame, text=f"Réf: {prod}", font=("Arial", 12), fg_color="#2D2D30", text_color="#CCCCCC").pack(anchor="w", pady=2)
+        ctk.CTkLabel(info_frame, text=f"Dim: {dim}", font=("Arial", 12), fg_color="#2D2D30", text_color="#CCCCCC").pack(anchor="w", pady=2)
         
-        tk.Label(info_frame, text=f"Code-Barres : {barcode}", font=("Arial", 14, "bold"), bg="#2D2D30", fg="#4da6ff").pack(pady=15)
+        ctk.CTkLabel(info_frame, text=f"Code-Barres : {barcode}", font=("Arial", 14, "bold"), fg_color="#2D2D30", text_color="#4da6ff").pack(pady=15)
         
         def do_scan():
             self.process_scan(barcode)
             sim_win.destroy()
             
-        tk.Button(sim_win, text="Scanner / Valider", font=("Arial", 14, "bold"), bg="#4CAF50", fg="white", command=do_scan).pack(pady=15, fill=tk.X, padx=20)
+        ctk.CTkButton(sim_win, text="Scanner / Valider", font=("Arial", 14, "bold"), fg_color="#4CAF50", text_color="white", command=do_scan).pack(pady=15, fill=tk.X, padx=20)
 
     def process_scan(self, qr_code):
         qr_code = qr_code.strip()
@@ -1879,11 +1882,11 @@ class SotraglaceApp:
             client = entete.get("DO_Tiers", "Inconnu")
             
             # Mettre à jour l'interface
-            self.lbl_commande.config(text=f"Commande : {do_piece}")
-            self.lbl_client.config(text=f"Client : {client}")
-            self.lbl_designation.config(text="Désignation : --")
-            self.lbl_dim.config(text="DIMENSIONS\n-- x --")
-            self.lbl_progression.config(text="0 / 0")
+            self.lbl_commande.configure(text=f"Commande : {do_piece}")
+            self.lbl_client.configure(text=f"Client : {client}")
+            self.lbl_designation.configure(text="Désignation : --")
+            self.lbl_dim.configure(text="DIMENSIONS\n-- x --")
+            self.lbl_progression.configure(text="0 / 0")
             
             # Sélection dans l'arbre pour charger les articles
             if self.tree_cmd.exists(do_piece):
@@ -1891,7 +1894,7 @@ class SotraglaceApp:
                 self.tree_cmd.see(do_piece)
                 self.on_order_select(None)
             else:
-                self.lbl_lignes_title.config(text=f"ARTICLES DE LA COMMANDE : {do_piece}")
+                self.lbl_lignes_title.configure(text=f"ARTICLES DE LA COMMANDE : {do_piece}")
                 self.update_lines_view(do_piece)
                 
                 # Auto-select the first article even if cmd is not in tree_cmd
@@ -1904,7 +1907,7 @@ class SotraglaceApp:
                     for widget in self.timeline_frame.winfo_children():
                         if widget != self.timeline_frame.winfo_children()[0]:
                             widget.destroy()
-                    self.lbl_article_details.config(text="Aucun article à produire pour ce poste sur cette commande.")
+                    self.lbl_article_details.configure(text="Aucun article à produire pour ce poste sur cette commande.")
                     self.show_timeline()
             
             self.update_status_bar("success", f"Commande {do_piece} chargée.")
@@ -1973,12 +1976,12 @@ class SotraglaceApp:
             self._update_single_cmd_in_tree(do_piece)
             
             # Mettre à jour les infos du flash
-            self.lbl_commande.config(text=f"Commande : {do_piece}")
-            self.lbl_client.config(text=f"Client : {client}")
-            self.lbl_designation.config(text=f"Désignation : {designation}")
+            self.lbl_commande.configure(text=f"Commande : {do_piece}")
+            self.lbl_client.configure(text=f"Client : {client}")
+            self.lbl_designation.configure(text=f"Désignation : {designation}")
             dim_text = observ if observ else "--"
-            self.lbl_dim.config(text=f"OF : {key}\\nDimensions : {dim_text}")
-            self.lbl_progression.config(text=f"{nouveau_count} / {qte_totale}")
+            self.lbl_dim.configure(text=f"OF : {key}\\nDimensions : {dim_text}")
+            self.lbl_progression.configure(text=f"{nouveau_count} / {qte_totale}")
             
             # Afficher le flash
             self.timeline_frame.place_forget()
@@ -2214,7 +2217,7 @@ class SotraglaceApp:
 if __name__ == "__main__":
     import traceback
     try:
-        root = tk.Tk()
+        root = ctk.CTk()
         app = SotraglaceApp(root)
         root.mainloop()
     except Exception as e:
