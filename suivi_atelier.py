@@ -1,4 +1,5 @@
-﻿import os
+import os
+os.environ["TK_SILENCE_DEPRECATION"] = "1"
 import sys
 import json
 import sqlite3
@@ -17,15 +18,24 @@ DB_FILE = os.path.join(APP_DIR, "suivi_atelier.db")
 CONFIG_FILE = os.path.join(APP_DIR, "config_poste.json")
 
 def get_postes_disponibles():
+    default_fallback = [
+        "DEC1 - Découpe Numérique SEKTOR",
+        "USI1 - Centre Usinage 1",
+        "FAC1 - Ligne Façonnage 1",
+        "TRE1 - Four Trempe",
+        "EXP1 - Zone Expédition"
+    ]
     try:
+        if not os.path.exists(DB_FILE):
+            return default_fallback
         conn = sqlite3.connect(DB_FILE)
         cursor = conn.cursor()
         cursor.execute("SELECT CodPost, DesPost FROM Postes")
         postes = [f"{row[0]} - {row[1]}" for row in cursor.fetchall()]
         conn.close()
-        return postes if postes else ["Erreur - Aucun poste"]
+        return postes if postes else default_fallback
     except Exception:
-        return ["Erreur BD"]
+        return default_fallback
 
 class ConfigDialog(tk.Toplevel):
     def __init__(self, parent, is_cancellable=False):
@@ -324,6 +334,34 @@ class SotraglaceApp:
     def init_db(self):
         self.db_conn = sqlite3.connect(DB_FILE)
         cursor = self.db_conn.cursor()
+        
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS Produits (
+                RefProd TEXT PRIMARY KEY,
+                DesProd TEXT
+            )
+        ''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS Operations (
+                RefOp TEXT PRIMARY KEY,
+                LibelOp TEXT
+            )
+        ''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS Postes (
+                CodPost TEXT PRIMARY KEY,
+                DesPost TEXT,
+                RefOp TEXT
+            )
+        ''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS Gammes (
+                ID INTEGER PRIMARY KEY AUTOINCREMENT,
+                RefProd TEXT,
+                CodeOp TEXT,
+                Ordre INTEGER
+            )
+        ''')
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS CdeDetail (
                 ID_OF TEXT PRIMARY KEY,
@@ -336,7 +374,6 @@ class SotraglaceApp:
             )
         ''')
         
-        # Upgrade schema if LignesSage doesn't exist
         try:
             cursor.execute("ALTER TABLE CdeDetail ADD COLUMN LignesSage TEXT")
         except sqlite3.OperationalError:
@@ -356,9 +393,35 @@ class SotraglaceApp:
                 ID_Scan INTEGER PRIMARY KEY AUTOINCREMENT,
                 ID_OF TEXT NOT NULL,
                 Poste TEXT NOT NULL,
-                Timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+                Timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                Child_Key TEXT
             )
         ''')
+        try:
+            cursor.execute("ALTER TABLE Scans ADD COLUMN Child_Key TEXT")
+        except sqlite3.OperationalError:
+            pass
+            
+        # Seed default postes et opérations si la table est vide
+        cursor.execute("SELECT count(*) FROM Postes")
+        if cursor.fetchone()[0] == 0:
+            default_ops = [
+                ("DEC", "Découpe"),
+                ("USI", "Usinage"),
+                ("FAC", "Façonnage"),
+                ("TRE", "Trempe"),
+                ("EXP", "Expédition")
+            ]
+            cursor.executemany("INSERT OR IGNORE INTO Operations (RefOp, LibelOp) VALUES (?, ?)", default_ops)
+            default_postes = [
+                ("DEC1", "Découpe Numérique SEKTOR", "DEC"),
+                ("USI1", "Centre Usinage 1", "USI"),
+                ("FAC1", "Ligne Façonnage 1", "FAC"),
+                ("TRE1", "Four Trempe", "TRE"),
+                ("EXP1", "Zone Expédition", "EXP")
+            ]
+            cursor.executemany("INSERT OR IGNORE INTO Postes (CodPost, DesPost, RefOp) VALUES (?, ?, ?)", default_postes)
+            
         self.db_conn.commit()
 
     def detect_encoding(self, filepath):
@@ -370,7 +433,18 @@ class SotraglaceApp:
                 return enc
             except UnicodeDecodeError:
                 continue
-        return 'latin-1'
+    def update_status_bar(self, status_type, message):
+        colors = {
+            "error": ("#D32F2F", "white"),
+            "success": ("#388E3C", "white"),
+            "progress": ("#1976D2", "white"),
+            "default": ("#333333", "white")
+        }
+        bg, fg = colors.get(status_type, ("#333333", "white"))
+        if hasattr(self, 'lbl_scan_status') and self.lbl_scan_status:
+            self.lbl_scan_status.config(text=message, bg=bg, fg=fg)
+        if hasattr(self, 'status_frame') and self.status_frame:
+            self.status_frame.config(bg=bg)
 
     def load_sage_data(self):
         if not os.path.exists(DATA_DIR):
