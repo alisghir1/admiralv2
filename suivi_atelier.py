@@ -129,12 +129,12 @@ class AddOfDialog(ctk.CTkToplevel):
         # Designation
         ctk.CTkLabel(form_frame, text="Désignation :", font=("Arial", 12), fg_color="#2D2D30", text_color="white").grid(row=1, column=0, sticky="w", pady=5)
         self.design_var = tk.StringVar(value=default_design)
-        ctk.CTkEntry(form_frame, textvariable=self.design_var, font=("Arial", 11), width=42).grid(row=1, column=1, sticky="w", pady=5)
+        ctk.CTkEntry(form_frame, textvariable=self.design_var, font=("Arial", 11), width=350).grid(row=1, column=1, sticky="w", pady=5)
         
         # Observations
         ctk.CTkLabel(form_frame, text="Observations :", font=("Arial", 12), fg_color="#2D2D30", text_color="white").grid(row=2, column=0, sticky="w", pady=5)
         self.obs_var = tk.StringVar(value=default_obs)
-        ctk.CTkEntry(form_frame, textvariable=self.obs_var, font=("Arial", 11), width=42).grid(row=2, column=1, sticky="w", pady=5)
+        ctk.CTkEntry(form_frame, textvariable=self.obs_var, font=("Arial", 11), width=350).grid(row=2, column=1, sticky="w", pady=5)
         
         # Quantite
         ctk.CTkLabel(form_frame, text="Quantité :", font=("Arial", 12), fg_color="#2D2D30", text_color="white").grid(row=3, column=0, sticky="w", pady=5)
@@ -276,7 +276,15 @@ class SotraglaceApp:
         
         self.root.title(f"Sotraglace - Tableau de Bord Production - Poste : {self.poste_actuel}")
         self.root.geometry("1280x800")
-        self.root.after(100, lambda: self.root.state('zoomed'))
+        def _maximize_safe():
+            try:
+                self.root.state('zoomed')
+            except Exception:
+                try:
+                    self.root.attributes('-zoomed', True)
+                except Exception:
+                    pass
+        self.root.after(100, _maximize_safe)
         
         # Style global
         self.style = ttk.Style()
@@ -284,15 +292,17 @@ class SotraglaceApp:
         
         # Configuration des Treeview
         self.style.configure("Treeview", 
-                             fg_color="#333333", text_color="white", 
-                             fieldbackground="#333333", rowheight=40, font=("Segoe UI", 12))
+                             background="#2D2D30", foreground="#FFFFFF", 
+                             fieldbackground="#2D2D30", rowheight=36, font=("Segoe UI", 12))
         self.style.configure("Treeview.Heading", 
-                             fg_color="#444444", text_color="white", 
+                             background="#3E3E42", foreground="#FFFFFF", 
                              font=("Segoe UI", 12, "bold"))
-        self.style.map("Treeview", background=[], foreground=[])
+        self.style.map("Treeview", 
+                       background=[('selected', '#007ACC')], 
+                       foreground=[('selected', '#FFFFFF')])
         
         # Couleurs des statuts
-        self.style.configure("TFrame", fg_color="#1E1E1E")
+        self.style.configure("TFrame", background="#1E1E1E")
         self.root.configure(fg_color="#1E1E1E")
         
         self.db_conn = None
@@ -561,18 +571,15 @@ class SotraglaceApp:
         return total_scanned, total_qte, f"{pct:.1f}%"
 
     def build_ui(self):
-        # Création du système d'onglets (Notebook)
-        self.notebook = ttk.Notebook(self.root)
-        self.notebook.pack(expand=True, fill=tk.BOTH)
-        self.notebook.bind("<<NotebookTabChanged>>", self.on_main_tab_changed)
+        # Création du système d'onglets natif CustomTkinter (CTkTabview)
+        self.notebook = ctk.CTkTabview(self.root, command=self.on_main_tab_changed)
+        self.notebook.pack(expand=True, fill=tk.BOTH, padx=5, pady=5)
         
         # Onglet 1 : Atelier
-        self.tab_atelier = ctk.CTkFrame(self.notebook, fg_color="#1E1E1E")
-        self.notebook.add(self.tab_atelier, text="⚙️ ATELIER (Production)")
+        self.tab_atelier = self.notebook.add("⚙️ ATELIER (Production)")
         
         # Onglet 2 : Bureau d'Étude
-        self.tab_be = ctk.CTkFrame(self.notebook, fg_color="#1E1E1E")
-        self.notebook.add(self.tab_be, text="📐 BUREAU D'ÉTUDE (Nomenclatures)")
+        self.tab_be = self.notebook.add("📐 BUREAU D'ÉTUDE (Nomenclatures)")
         
         # Construction de l'interface Atelier dans tab_atelier
         # 1. Header (Bandeau supérieur)
@@ -596,6 +603,22 @@ class SotraglaceApp:
                              fg_color="#9C27B0", text_color="white", command=self.open_scan_simulator)
         btn_simu.pack(side=tk.RIGHT, padx=10, pady=20)
 
+        # 3. Footer (Bandeau inférieur - placé avant le body pour ne pas être écrasé)
+        self.footer_frame = ctk.CTkFrame(self.tab_atelier, fg_color="#2D2D30", height=120, corner_radius=0)
+        self.footer_frame.pack(fill=tk.X, side=tk.BOTTOM)
+        self.footer_frame.pack_propagate(False)
+        
+        self.lbl_scan_status = ctk.CTkLabel(self.footer_frame, text="En attente de scan...", 
+                                        font=("Arial", 22, "bold"), text_color="white", fg_color="transparent")
+        self.lbl_scan_status.pack(pady=(15, 8))
+        
+        self.scan_var = tk.StringVar()
+        self.scan_entry = ctk.CTkEntry(self.footer_frame, textvariable=self.scan_var, font=("Arial", 22, "bold"), justify="center", width=450, height=45, corner_radius=12)
+        self.scan_entry.pack(pady=5)
+        self.scan_entry.bind("<Return>", self.on_scan)
+        
+        self.status_frame = self.footer_frame
+
         # 2. Body (Zone centrale)
         self.body_frame = ctk.CTkFrame(self.tab_atelier, fg_color="#1E1E1E")
         self.body_frame.pack(expand=True, fill=tk.BOTH, padx=10, pady=10)
@@ -614,7 +637,7 @@ class SotraglaceApp:
         
         self.search_var = tk.StringVar()
         self.search_var.trace("w", self.on_search_change)
-        self.search_entry = ctk.CTkEntry(search_frame, textvariable=self.search_var, font=("Segoe UI", 12), width=15)
+        self.search_entry = ctk.CTkEntry(search_frame, textvariable=self.search_var, font=("Segoe UI", 12), width=200, corner_radius=8)
         self.search_entry.pack(side=tk.RIGHT)
         ctk.CTkLabel(search_frame, text="Recherche:", font=("Segoe UI", 12), fg_color="#1E1E1E", text_color="white").pack(side=tk.RIGHT, padx=5)
 
@@ -799,21 +822,7 @@ class SotraglaceApp:
         self.lbl_progression = ctk.CTkLabel(prog_info, text="0 / 0", font=("Arial", 80, "bold"), fg_color="#1E1E1E", text_color="white")
         self.lbl_progression.pack(expand=True)
         
-        # 3. Footer (Bandeau inférieur)
-        self.footer_frame = ctk.CTkFrame(self.tab_atelier, fg_color="#333333", height=120)
-        self.footer_frame.pack(fill=tk.X, side=tk.BOTTOM)
-        self.footer_frame.pack_propagate(False)
-        
-        self.lbl_scan_status = ctk.CTkLabel(self.footer_frame, text="En attente de scan...", 
-                                        font=("Arial", 22, "bold"), text_color="white", fg_color="#333333")
-        self.lbl_scan_status.pack(pady=(15, 10))
-        
-        self.scan_var = tk.StringVar()
-        self.scan_entry = ctk.CTkEntry(self.footer_frame, textvariable=self.scan_var, font=("Arial", 18), justify="center", width=30)
-        self.scan_entry.pack(pady=5)
-        self.scan_entry.bind("<Return>", self.on_scan)
-        
-        self.status_frame = self.footer_frame
+
         
         # Construction de l'interface Bureau d'Étude
         self.build_be_ui()
@@ -826,45 +835,34 @@ class SotraglaceApp:
         self.lbl_be_header = ctk.CTkLabel(header_be, text="📐 BUREAU D'ÉTUDE", font=("Arial", 20, "bold"), text_color="white", fg_color="#2C3E50")
         self.lbl_be_header.pack(side=tk.LEFT, padx=20, pady=20)
         
-        # Style pour le notebook BE
-        style = ttk.Style()
-        style.configure("BENotebook.TNotebook", fg_color="#1E1E1E")
-        style.configure("BENotebook.TNotebook.Tab", padding=[15, 5], font=('Arial', 11, 'bold'))
-        
-        # Notebook BE
-        self.be_notebook = ttk.Notebook(self.tab_be, style="BENotebook.TNotebook")
+        # Notebook BE natif CustomTkinter
+        self.be_notebook = ctk.CTkTabview(self.tab_be, command=self.on_be_tab_changed)
         self.be_notebook.pack(expand=True, fill=tk.BOTH, padx=10, pady=10)
         
-        self.tab_be_gen = ctk.CTkFrame(self.be_notebook, fg_color="#1E1E1E")
-        self.tab_be_matrice = ctk.CTkFrame(self.be_notebook, fg_color="#1E1E1E")
-        self.tab_be_charge = ctk.CTkFrame(self.be_notebook, fg_color="#1E1E1E")
-        
-        self.be_notebook.add(self.tab_be_gen, text="📝 Génération OF")
-        self.be_notebook.add(self.tab_be_matrice, text="📊 Matrice Commandes")
-        self.be_notebook.add(self.tab_be_charge, text="🏭 Charge Machines")
-        
-        self.be_notebook.bind("<<NotebookTabChanged>>", self.on_be_tab_changed)
+        self.tab_be_gen = self.be_notebook.add("📝 Génération OF")
+        self.tab_be_matrice = self.be_notebook.add("📊 Matrice Commandes")
+        self.tab_be_charge = self.be_notebook.add("🏭 Charge Machines")
         
         self.build_be_gen_ui()
         self.build_be_matrice_ui()
         self.build_be_charge_ui()
 
-    def on_main_tab_changed(self, event):
-        tab_id = self.notebook.select()
-        tab_text = self.notebook.tab(tab_id, "text")
+    def on_main_tab_changed(self, event=None):
+        tab_text = self.notebook.get() if hasattr(self.notebook, "get") else ""
         if "BUREAU" in tab_text:
             if hasattr(self, "be_notebook"):
-                be_tab_id = self.be_notebook.select()
-                if be_tab_id:
-                    be_tab_text = self.be_notebook.tab(be_tab_id, "text")
-                    if "Matrice" in be_tab_text:
-                        self.refresh_be_matrice()
-                    elif "Charge" in be_tab_text:
-                        self.refresh_be_charge()
+                be_tab_text = self.be_notebook.get() if hasattr(self.be_notebook, "get") else ""
+                if "Matrice" in be_tab_text:
+                    self.refresh_be_matrice()
+                elif "Charge" in be_tab_text:
+                    self.refresh_be_charge()
 
-    def on_be_tab_changed(self, event):
-        tab_id = self.be_notebook.select()
-        tab_text = self.be_notebook.tab(tab_id, "text")
+    def on_be_tab_changed(self, event=None):
+        tab_text = self.be_notebook.get() if hasattr(self.be_notebook, "get") else ""
+        if "Matrice" in tab_text:
+            self.refresh_be_matrice()
+        elif "Charge" in tab_text:
+            self.refresh_be_charge()
         self.lbl_be_header.configure(text=f"📐 BUREAU D'ÉTUDE - {tab_text}")
         
         if "Matrice" in tab_text:
