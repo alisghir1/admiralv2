@@ -636,7 +636,7 @@ class SotraglaceApp:
         ctk.CTkLabel(search_frame, text="LISTE DES COMMANDES", font=("Segoe UI", 16, "bold"), text_color="#CCCCCC", fg_color="#1E1E1E").pack(side=tk.LEFT)
         
         self.search_var = tk.StringVar()
-        self.search_var.trace("w", self.on_search_change)
+        self.search_var.trace_add("write", self.on_search_change)
         self.search_entry = ctk.CTkEntry(search_frame, textvariable=self.search_var, font=("Segoe UI", 12), width=200, corner_radius=8)
         self.search_entry.pack(side=tk.RIGHT)
         ctk.CTkLabel(search_frame, text="Recherche:", font=("Segoe UI", 12), fg_color="#1E1E1E", text_color="white").pack(side=tk.RIGHT, padx=5)
