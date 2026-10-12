@@ -1,0 +1,38 @@
+ADMIRAL - Suivi d'atelier Sotraglace
+Version de validation (données de démonstration)
+=====================================================
+
+1. INSTALLATION
+   - Décompressez le dossier où vous voulez (Bureau, Documents...).
+     Gardez ensemble Admiral.exe, le dossier "data" et le fichier "suivi_atelier.db".
+   - Double-cliquez sur Admiral.exe. Le premier démarrage prend quelques secondes.
+   - Si Windows affiche « Windows a protégé votre ordinateur » : cliquez sur
+     « Informations complémentaires » puis « Exécuter quand même ».
+     (L'application n'est pas encore signée numériquement ; ce message est normal.)
+
+2. PREMIER LANCEMENT
+   L'application demande le poste de ce PC (Découpe, Façonnage, Trempe...).
+   Pour la démonstration, choisissez par exemple « FAC1 - Ligne Façonnage 1 » :
+   c'est le poste où l'on voit le plus de cas différents.
+   Le poste se change ensuite avec le bouton « Changer de poste » en haut à droite.
+
+3. CE QU'IL Y A À VALIDER
+   Atelier            Commandes du poste, cartes des OF (état, dimensions, compteur,
+                      gamme), boutons +1 / Terminer / -1, menu « Plus » (historique).
+                      « Simuler un scan » remplace la douchette : cliquez d'abord une carte.
+                      Avec une douchette, scannez un code OF (ex. OF-1000) ou commande
+                      (ex. CMD-CC240001).
+   Synthèse           Pièces du jour, OF en cours / terminés / en retard, OF à surveiller.
+   Création d'OF      Commandes Sage, lignes de commande, création, modification,
+                      annulation d'OF, clôture de commande.
+   Avancement         Matrice commandes x opérations.
+   Charge des postes  OF à faire / en cours / terminés par poste.
+   Administration     Produits et gammes, opérations, postes, import Excel.
+
+   Les données sont fictives : vous pouvez tout essayer sans risque.
+   Pour repartir de zéro, supprimez suivi_atelier.db et config_poste.json,
+   puis redemandez le dossier d'origine.
+
+4. EN CAS DE PROBLÈME
+   Envoyez le fichier logs\admiral.log (créé à côté d'Admiral.exe)
+   avec une description de ce que vous faisiez.

@@ -7,6 +7,8 @@ __pycache__/
 build/
 dist/
 *.spec
+!admiral.spec
+.venv-build/
 *.exe
 
 # Database
@@ -23,3 +25,9 @@ downloads/
 .DS_Store
 Thumbs.db
 *.log
+
+# Environnement virtuel
+.venv/
+
+# Journaux
+logs/

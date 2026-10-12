@@ -1,0 +1,2 @@
+# Scripts Windows : fins de ligne CRLF (sinon « goto » peut échouer)
+*.bat text eol=crlf

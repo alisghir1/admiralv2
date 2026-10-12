@@ -1,11 +1,23 @@
+"""Réinitialise la base et importe le référentiel depuis l'Excel Sage.
+
+Usage : python setup_db.py "<chemin vers BASE SAGE ADMIRAL.xlsx>"
+
+ATTENTION : supprime TOUTES les tables (produits, gammes, OF, scans) avant l'import.
+"""
 import sqlite3
-import openpyxl
 import os
+import sys
 
-DB_FILE = 'suivi_atelier.db'
-EXCEL_FILE = r'C:\Users\Ali\Downloads\BASE SAGE ADMIRAL.xlsx'
+from admiral import config
+from admiral.db import schema
+from admiral.db.depot import Depot
+from admiral.domain import referentiel
 
-def setup_database():
+DB_FILE = config.chemin_base(config.lire_config())
+
+def setup_database(excel_file):
+    import openpyxl
+
     print("Initialisation de la nouvelle base de données MES...")
     
     # Connect to the database (creates it if it doesn't exist)
@@ -17,131 +29,20 @@ def setup_database():
     for table in tables:
         cursor.execute(f"DROP TABLE IF EXISTS {table}")
         
-    # 2. Create the new schema
-    cursor.execute('''
-        CREATE TABLE Produits (
-            RefProd TEXT PRIMARY KEY,
-            DesProd TEXT
-        )
-    ''')
-    
-    cursor.execute('''
-        CREATE TABLE Operations (
-            RefOp TEXT PRIMARY KEY,
-            LibelOp TEXT
-        )
-    ''')
-    
-    cursor.execute('''
-        CREATE TABLE Postes (
-            CodPost TEXT PRIMARY KEY,
-            DesPost TEXT,
-            RefOp TEXT,
-            FOREIGN KEY(RefOp) REFERENCES Operations(RefOp)
-        )
-    ''')
-    
-    cursor.execute('''
-        CREATE TABLE Gammes (
-            ID INTEGER PRIMARY KEY AUTOINCREMENT,
-            RefProd TEXT,
-            CodeOp TEXT,
-            Ordre INTEGER,
-            FOREIGN KEY(RefProd) REFERENCES Produits(RefProd),
-            FOREIGN KEY(CodeOp) REFERENCES Operations(RefOp)
-        )
-    ''')
-    
-    cursor.execute('''
-        CREATE TABLE CdeDetail (
-            ID_OF TEXT PRIMARY KEY,
-            CDE TEXT,
-            PROD TEXT,
-            DESIGN TEXT,
-            OBSERV TEXT,
-            Qte INTEGER DEFAULT 1,
-            FOREIGN KEY(PROD) REFERENCES Produits(RefProd)
-        )
-    ''')
-    
-    cursor.execute('''
-        CREATE TABLE OF_Gammes (
-            ID_OF TEXT,
-            Ordre INTEGER,
-            CodeOp TEXT,
-            Poste_Assigne TEXT,
-            PRIMARY KEY (ID_OF, Ordre),
-            FOREIGN KEY(ID_OF) REFERENCES CdeDetail(ID_OF),
-            FOREIGN KEY(CodeOp) REFERENCES Operations(RefOp)
-        )
-    ''')
-    
-    # We redefine Scans to link to the ID_OF
-    cursor.execute('''
-        CREATE TABLE Scans (
-            ID_Scan INTEGER PRIMARY KEY AUTOINCREMENT,
-            ID_OF TEXT NOT NULL,
-            Poste TEXT NOT NULL,
-            Timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY(ID_OF) REFERENCES CdeDetail(ID_OF),
-            FOREIGN KEY(Poste) REFERENCES Postes(CodPost)
-        )
-    ''')
+    # 2. Recréer le schéma de l'application (sans les postes par défaut : ils viennent de l'Excel)
+    conn.execute("PRAGMA user_version = 0")
+    schema.initialiser(conn, postes_par_defaut=False)
     
     print("Schéma créé avec succès.")
 
     # 3. Import Data from Excel
-    if os.path.exists(EXCEL_FILE):
-        print(f"Lecture du fichier Excel : {EXCEL_FILE}")
-        wb = openpyxl.load_workbook(EXCEL_FILE, data_only=True)
+    if os.path.exists(excel_file):
+        print(f"Lecture du fichier Excel : {excel_file}")
+        wb = openpyxl.load_workbook(excel_file, data_only=True)
         
-        # Import Produits
-        if 'PRODUIT' in wb.sheetnames:
-            ws = wb['PRODUIT']
-            for i, row in enumerate(ws.iter_rows(values_only=True)):
-                if i == 0 or not row[0]: continue # Skip header or empty rows
-                cursor.execute("INSERT OR IGNORE INTO Produits (RefProd, DesProd) VALUES (?, ?)", (str(row[0]), str(row[1]) if row[1] else ""))
-            print("Produits importés.")
-
-        # Import Operations
-        if 'OPERATION' in wb.sheetnames:
-            ws = wb['OPERATION']
-            for i, row in enumerate(ws.iter_rows(values_only=True)):
-                if i == 0 or not row[0]: continue
-                cursor.execute("INSERT OR IGNORE INTO Operations (RefOp, LibelOp) VALUES (?, ?)", (str(row[0]), str(row[1]) if row[1] else ""))
-            print("Opérations importées.")
-
-        # Import Postes
-        if 'POSTE' in wb.sheetnames:
-            ws = wb['POSTE']
-            for i, row in enumerate(ws.iter_rows(values_only=True)):
-                if i == 0 or not row[0]: continue
-                codpost = str(row[0]).strip()
-                despost = str(row[1]).strip() if row[1] else ""
-                # Infer RefOp from CodPost (e.g. DEC1 -> DEC)
-                # This is a heuristic since RefOp isn't explicitly in the POSTE sheet
-                refop = ''.join([c for c in codpost if not c.isdigit()]).strip()
-                cursor.execute("INSERT OR IGNORE INTO Postes (CodPost, DesPost, RefOp) VALUES (?, ?, ?)", (codpost, despost, refop))
-            print("Postes importés.")
-
-        # Import Gammes (GAMPROD)
-        if 'GAMPROD' in wb.sheetnames:
-            ws = wb['GAMPROD']
-            current_prod = None
-            ordre = 1
-            for i, row in enumerate(ws.iter_rows(values_only=True)):
-                if i == 0: continue
-                
-                col_refprod = row[0]
-                col_codop = row[2]
-                
-                if col_refprod: # New product routing starts
-                    current_prod = str(col_refprod).strip()
-                    ordre = 1
-                elif col_codop and current_prod: # Operation for current product
-                    cursor.execute("INSERT INTO Gammes (RefProd, CodeOp, Ordre) VALUES (?, ?, ?)", (current_prod, str(col_codop).strip(), ordre))
-                    ordre += 1
-            print("Gammes importées.")
+        # Référentiel : mêmes règles de lecture que l'import depuis l'application (Administration)
+        compte = Depot(conn).importer_referentiel(referentiel.analyser(referentiel.lire_classeur(excel_file)))
+        print("Référentiel importé :", ", ".join(f"{n} {quoi}" for quoi, n in compte.items()))
 
         # Import CDEDETAIL (Initial OF creation)
         if 'CDEDETAIL' in wb.sheetnames:
@@ -173,4 +74,11 @@ def setup_database():
     print("Base de données mise à jour avec succès.")
 
 if __name__ == "__main__":
-    setup_database()
+    if len(sys.argv) != 2 or not os.path.exists(sys.argv[1]):
+        print(__doc__)
+        sys.exit(1)
+    print(f"Base cible : {DB_FILE}")
+    if input("Toutes les données (OF, scans, gammes) seront supprimées. Tapez OUI pour continuer : ").strip() != "OUI":
+        print("Annulé.")
+        sys.exit(0)
+    setup_database(sys.argv[1])

@@ -1,0 +1,4 @@
+customtkinter==6.0.0
+pillow==12.3.0
+# Import du référentiel Excel (onglet Administration et setup_db.py)
+openpyxl

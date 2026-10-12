@@ -1,7 +1,11 @@
 import sqlite3
 
+from admiral import config
+
+DB_FILE = config.chemin_base(config.lire_config())
+
 def reset_atelier():
-    conn = sqlite3.connect('suivi_atelier.db')
+    conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
 
     # Supprimer uniquement les OFs et les Scans (l'onglet Atelier)

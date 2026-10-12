@@ -1,10 +1,11 @@
 import os
-import sqlite3
 import csv
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.path.join(BASE_DIR, "data")
-DB_FILE = os.path.join(BASE_DIR, "suivi_atelier.db")
+from admiral import config
+from admiral.db import schema
+
+DATA_DIR = config.dossier_sage(config.lire_config())
+DB_FILE = config.chemin_base(config.lire_config())
 
 def seed():
     print("Génération du jeu de données de test...")
@@ -38,7 +39,7 @@ def seed():
     print(f"-> {file_lignes} généré (5 lignes d'articles).")
 
     # 2. Remplissage de la base SQLite
-    conn = sqlite3.connect(DB_FILE)
+    conn = schema.ouvrir(DB_FILE)
     cursor = conn.cursor()
 
     # Nettoyage préalable des tables concernées

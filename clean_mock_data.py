@@ -1,9 +1,10 @@
 import os
-import sqlite3
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.path.join(BASE_DIR, "data")
-DB_FILE = os.path.join(BASE_DIR, "suivi_atelier.db")
+from admiral import config
+from admiral.db import schema
+
+DATA_DIR = config.dossier_sage(config.lire_config())
+DB_FILE = config.chemin_base(config.lire_config())
 
 def clean():
     print("Nettoyage du jeu de données de test...")
@@ -18,7 +19,7 @@ def clean():
 
     # 2. Nettoyage de la base de données
     if os.path.exists(DB_FILE):
-        conn = sqlite3.connect(DB_FILE)
+        conn = schema.ouvrir(DB_FILE)
         cursor = conn.cursor()
         cursor.execute("DELETE FROM Scans")
         cursor.execute("DELETE FROM OF_Gammes")
