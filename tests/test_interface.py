@@ -395,7 +395,7 @@ class Interface(unittest.TestCase):
         self.passer_en(next(p for p in self.app.libelles_postes() if p.startswith("DEC1 ")))
         barre = self.app.notebook._segmented_button
         self.assertEqual(list(barre.cget("values")), [self.app.NOM_ONGLET_ATELIER])
-        self.assertFalse(barre.winfo_ismapped(), "barre d'onglets masquée sur un poste machine")
+        self.assertEqual(barre.winfo_manager(), "", "barre d'onglets masquée sur un poste machine")
         self.assertEqual(self.app.notebook.get(), self.app.NOM_ONGLET_ATELIER)
         self.assertIn("Poste DEC1", self.app.lbl_title.cget("text"))
 
@@ -407,7 +407,7 @@ class Interface(unittest.TestCase):
             self.assertNotIn(self.app.NOM_ONGLET_ATELIER, onglets)
             self.assertEqual(onglets, [self.app.NOM_ONGLET_SYNTHESE, self.app.NOM_ONGLET_GENERATION, self.app.NOM_ONGLET_MATRICE,
                                        self.app.NOM_ONGLET_CHARGE, self.app.NOM_ONGLET_ADMIN])
-            self.assertTrue(self.app.notebook._segmented_button.winfo_ismapped())
+            self.assertEqual(self.app.notebook._segmented_button.winfo_manager(), "grid")
             self.assertEqual(self.app.lbl_title.cget("text").strip(), "Bureau d'étude")
             self.assertNotIn("Poste", self.app.lbl_title.cget("text"))
             # Pas de douchette : un caractère tapé ne part pas dans le champ de scan

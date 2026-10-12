@@ -36,7 +36,7 @@ def lancer(root, app, resultat):
             # Mode poste machine : l'écran Atelier seul, barre d'onglets masquée
             if app.est_bureau_etude:
                 passer_en(app.libelles_postes()[0])
-            if app.notebook._segmented_button.winfo_ismapped():
+            if app.notebook._segmented_button.winfo_manager():
                 raise RuntimeError("la barre d'onglets est visible sur un poste machine")
             commandes = app.tree_cmd.get_children()
             if commandes:
