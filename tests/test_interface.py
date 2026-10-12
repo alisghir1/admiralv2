@@ -384,11 +384,12 @@ class Interface(unittest.TestCase):
     # --- Mode Bureau d'étude / poste machine ---
 
     def passer_en(self, poste):
+        # Sans root.update() : sous Windows, traiter ici les événements laissés par les fenêtres ouvertes
+        # et fermées en rafale par les tests précédents fait planter Tk (artefact propre aux tests).
         self.app.poste_actuel = poste
         self.app._maj_entete_poste()
         self.app._appliquer_mode()
         self.app.refresh_dashboard()
-        self.root.update()
 
     def test_24_poste_machine_atelier_seul(self):
         self.passer_en(next(p for p in self.app.libelles_postes() if p.startswith("DEC1 ")))

@@ -60,16 +60,19 @@ def lancer(root, app, resultat):
                 app._afficher_section_admin(section)
                 root.update()
 
+            # Retour au poste de départ avant d'ouvrir les fenêtres (aucune configuration n'est écrite)
+            passer_en(poste_initial)
+
+            # Fenêtres en dernier : rien n'est rafraîchi après leur fermeture (sous Windows, traiter les
+            # événements d'une fenêtre fermée aussitôt ouverte peut faire planter Tk)
             of = next(iter(app.etat.ofs.values()), None)
             fenetres = [ConfigDialog(root, app.libelles_postes(), is_cancellable=True, actuel=app.poste_actuel),
                         AddOfDialog(root, app.depot, of.cde if of else "CC000000")]
             if of:
                 fenetres += [ModifierOfDialog(root, app.depot, of), HistoriqueDialog(root, of, app.depot.historique_scans(of.id))]
             for fenetre in fenetres:
-                fenetre.update()
                 fenetre.destroy()
             log.info("Autotest : %d fenêtres OK", len(fenetres))
-            passer_en(poste_initial)   # aucune configuration n'est écrite : on revient au poste de départ
             log.info("AUTOTEST RÉUSSI")
             resultat["code"] = 0
         except Exception:
