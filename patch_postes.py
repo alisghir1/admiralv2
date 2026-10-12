@@ -24,7 +24,7 @@ def patch():
             cursor.execute("SELECT Operations.LibelOp FROM Gammes JOIN Operations ON Gammes.CodeOp = Operations.RefOp WHERE RefProd = ? ORDER BY Ordre", (ref,))
             gammes = cursor.fetchall()
             if gammes:
-                texte_gamme = " ➔ ".join([g[0] for g in gammes])
+                texte_gamme = " -> ".join([g[0] for g in gammes])
                 self.lbl_gamme.config(text=texte_gamme)
             else:
                 self.lbl_gamme.config(text="Aucune gamme définie pour ce produit.")"""

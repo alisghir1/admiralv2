@@ -20,6 +20,24 @@ DATA_DIR = os.path.join(APP_DIR, "data")
 DB_FILE = os.path.join(APP_DIR, "suivi_atelier.db")
 CONFIG_FILE = os.path.join(APP_DIR, "config_poste.json")
 
+_ICONS_CACHE = {}
+
+def get_icon(name, size=(16, 16)):
+    key = (name, size)
+    if key in _ICONS_CACHE:
+        return _ICONS_CACHE[key]
+    try:
+        from PIL import Image
+        icon_path = os.path.join(APP_DIR, "assets", "icons", f"{name}.png")
+        if os.path.exists(icon_path):
+            img = Image.open(icon_path)
+            ctk_img = ctk.CTkImage(light_image=img, dark_image=img, size=size)
+            _ICONS_CACHE[key] = ctk_img
+            return ctk_img
+    except Exception:
+        pass
+    return None
+
 def get_postes_disponibles():
     default_fallback = [
         "DEC1 - Découpe Numérique SEKTOR",
@@ -62,7 +80,7 @@ class ConfigDialog(ctk.CTkToplevel):
         card = ctk.CTkFrame(self, fg_color="#0F172A", corner_radius=12, border_width=1, border_color="#334155")
         card.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
         
-        ctk.CTkLabel(card, text="⚙️ CONFIGURATION DU POSTE", 
+        ctk.CTkLabel(card, text="CONFIGURATION DU POSTE", 
                      font=("Segoe UI", 14, "bold"), text_color="#38BDF8").pack(pady=(20, 4))
         ctk.CTkLabel(card, text="Veuillez sélectionner votre poste de travail :", 
                      font=("Segoe UI", 12), text_color="#94A3B8").pack(pady=(0, 16))
@@ -125,7 +143,7 @@ class AddOfDialog(ctk.CTkToplevel):
         # Header Dialog
         header_dlg = ctk.CTkFrame(main_card, fg_color="transparent")
         header_dlg.pack(fill=tk.X, padx=20, pady=(16, 12))
-        ctk.CTkLabel(header_dlg, text="📝 CRÉATION D'ORDRE DE FABRICATION (OF)", font=("Segoe UI", 15, "bold"), text_color="#38BDF8").pack(anchor="w")
+        ctk.CTkLabel(header_dlg, text="CRÉATION D'ORDRE DE FABRICATION (OF)", font=("Segoe UI", 15, "bold"), text_color="#38BDF8").pack(anchor="w")
         ctk.CTkLabel(header_dlg, text=f"Rattaché à la commande Sage : {cde}", font=("Segoe UI", 12), text_color="#94A3B8").pack(anchor="w")
         
         # Formulaire
@@ -174,7 +192,7 @@ class AddOfDialog(ctk.CTkToplevel):
                      fg_color="#1E293B", border_color="#334155", text_color="#F8FAFC", corner_radius=8).grid(row=3, column=1, sticky="w", pady=8)
         
         # Gamme Preview avec choix des postes
-        ctk.CTkLabel(form_frame, text="⚙️ Gamme & Assignation des Postes :", font=("Segoe UI", 12, "bold"), text_color="#38BDF8").grid(row=4, column=0, columnspan=2, sticky="w", pady=(14, 6))
+        ctk.CTkLabel(form_frame, text="Gamme & Assignation des Postes :", font=("Segoe UI", 12, "bold"), text_color="#38BDF8").grid(row=4, column=0, columnspan=2, sticky="w", pady=(14, 6))
         
         self.gamme_frame = ctk.CTkFrame(form_frame, fg_color="#1E293B", corner_radius=10, border_width=1, border_color="#334155")
         self.gamme_frame.grid(row=5, column=0, columnspan=2, sticky="nsew", pady=4)
@@ -187,7 +205,8 @@ class AddOfDialog(ctk.CTkToplevel):
         ctk.CTkButton(self.btn_frame, text="Annuler", font=("Segoe UI", 12, "bold"), 
                       fg_color="#334155", hover_color="#475569", text_color="#F8FAFC", 
                       height=36, corner_radius=8, command=self.destroy).pack(side=tk.RIGHT, padx=(8, 0))
-        ctk.CTkButton(self.btn_frame, text="➕ Créer l'OF", font=("Segoe UI", 12, "bold"), 
+        ctk.CTkButton(self.btn_frame, text="Créer l'OF", font=("Segoe UI", 12, "bold"), 
+                      image=get_icon("plus"), compound="left",
                       fg_color="#059669", hover_color="#047857", text_color="#FFFFFF", 
                       height=36, corner_radius=8, command=self.save).pack(side=tk.RIGHT, padx=8)
         
@@ -636,10 +655,10 @@ class SotraglaceApp:
         self.notebook.pack(expand=True, fill=tk.BOTH, padx=8, pady=6)
         
         # Onglet 1 : Atelier
-        self.tab_atelier = self.notebook.add("⚙️ ATELIER (Production)")
+        self.tab_atelier = self.notebook.add("ATELIER (Production)")
         
         # Onglet 2 : Bureau d'Étude
-        self.tab_be = self.notebook.add("📐 BUREAU D'ÉTUDE (Nomenclatures)")
+        self.tab_be = self.notebook.add("BUREAU D'ÉTUDE (Nomenclatures)")
         
         # Construction de l'interface Atelier dans tab_atelier
         # 1. Header (Bandeau supérieur moderne avec carte Slate satinée)
@@ -651,24 +670,27 @@ class SotraglaceApp:
         badge_poste = ctk.CTkFrame(self.header_frame, fg_color="#1E293B", corner_radius=8, border_width=1, border_color="#2563EB")
         badge_poste.pack(side=tk.LEFT, padx=16, pady=12)
         
-        ctk.CTkLabel(badge_poste, text="🏭 SOTRAGLACE MES", font=("Segoe UI", 11, "bold"), text_color="#38BDF8").pack(side=tk.LEFT, padx=(12, 6), pady=8)
+        ctk.CTkLabel(badge_poste, text="SOTRAGLACE MES", font=("Segoe UI", 11, "bold"), text_color="#38BDF8").pack(side=tk.LEFT, padx=(12, 6), pady=8)
         ctk.CTkLabel(badge_poste, text="|", font=("Segoe UI", 12), text_color="#475569").pack(side=tk.LEFT, padx=2)
         self.lbl_title = ctk.CTkLabel(badge_poste, text=f"POSTE : {self.poste_nom_court.upper()}", 
                                       font=("Segoe UI", 15, "bold"), text_color="#F8FAFC")
         self.lbl_title.pack(side=tk.LEFT, padx=(6, 12), pady=8)
         
         # Boutons d'action Header
-        btn_poste = ctk.CTkButton(self.header_frame, text="⚙️ Changer de Poste", font=("Segoe UI", 12, "bold"),
+        btn_poste = ctk.CTkButton(self.header_frame, text="Changer de Poste", font=("Segoe UI", 12, "bold"),
+                                  image=get_icon("settings"), compound="left",
                                   fg_color="#D97706", hover_color="#B45309", text_color="white",
                                   height=36, corner_radius=8, command=self.change_poste)
         btn_poste.pack(side=tk.RIGHT, padx=(6, 16), pady=18)
         
-        btn_refresh = ctk.CTkButton(self.header_frame, text="🔄 Actualiser CSV", font=("Segoe UI", 12, "bold"),
+        btn_refresh = ctk.CTkButton(self.header_frame, text="Actualiser CSV", font=("Segoe UI", 12, "bold"),
+                                    image=get_icon("refresh"), compound="left",
                                     fg_color="#059669", hover_color="#047857", text_color="white",
                                     height=36, corner_radius=8, command=self.action_refresh)
         btn_refresh.pack(side=tk.RIGHT, padx=6, pady=18)
         
-        btn_simu = ctk.CTkButton(self.header_frame, text="🔫 Test Scan", font=("Segoe UI", 12, "bold"),
+        btn_simu = ctk.CTkButton(self.header_frame, text="Test Scanner", font=("Segoe UI", 12, "bold"),
+                                 image=get_icon("barcode"), compound="left",
                                  fg_color="#4F46E5", hover_color="#4338CA", text_color="white",
                                  height=36, corner_radius=8, command=self.open_scan_simulator)
         btn_simu.pack(side=tk.RIGHT, padx=6, pady=18)
@@ -678,7 +700,7 @@ class SotraglaceApp:
         self.footer_frame.pack(fill=tk.X, side=tk.BOTTOM, pady=(8, 2))
         self.footer_frame.pack_propagate(False)
         
-        self.lbl_scan_status = ctk.CTkLabel(self.footer_frame, text="🎯 EN ATTENTE DU SCAN DOUCHETTE", 
+        self.lbl_scan_status = ctk.CTkLabel(self.footer_frame, text="EN ATTENTE DU SCAN DOUCHETTE", 
                                             font=("Segoe UI", 15, "bold"), text_color="#94A3B8", fg_color="transparent")
         self.lbl_scan_status.pack(pady=(12, 6))
         
@@ -705,14 +727,18 @@ class SotraglaceApp:
         
         search_frame = ctk.CTkFrame(self.right_col, fg_color="transparent")
         search_frame.pack(fill=tk.X, padx=12, pady=(12, 8))
-        ctk.CTkLabel(search_frame, text="📋 COMMANDES EN ATELIER", font=("Segoe UI", 13, "bold"), text_color="#38BDF8").pack(side=tk.LEFT)
+        ctk.CTkLabel(search_frame, text="COMMANDES EN ATELIER", font=("Segoe UI", 13, "bold"), text_color="#38BDF8").pack(side=tk.LEFT)
         
         self.search_var = tk.StringVar()
         self.search_var.trace_add("write", self.on_search_change)
         self.search_entry = ctk.CTkEntry(search_frame, textvariable=self.search_var, font=("Segoe UI", 12), width=180, 
                                          corner_radius=8, border_width=1, border_color="#334155", fg_color="#1E293B", text_color="#F8FAFC")
         self.search_entry.pack(side=tk.RIGHT)
-        ctk.CTkLabel(search_frame, text="🔍", font=("Segoe UI", 12), text_color="#94A3B8").pack(side=tk.RIGHT, padx=4)
+        search_ico = get_icon("search", size=(14, 14))
+        if search_ico:
+            ctk.CTkLabel(search_frame, text="", image=search_ico).pack(side=tk.RIGHT, padx=4)
+        else:
+            ctk.CTkLabel(search_frame, text="Rech.", font=("Segoe UI", 11), text_color="#94A3B8").pack(side=tk.RIGHT, padx=4)
 
         cols_cmd = ("commande", "date", "client", "avancement")
         tree_cmd_frame = ctk.CTkFrame(self.right_col, fg_color="#1E293B", corner_radius=10, border_width=1, border_color="#334155")
@@ -803,7 +829,7 @@ class SotraglaceApp:
         self.actions_article_frame = ctk.CTkFrame(self.left_col, fg_color="#0F172A", corner_radius=10, border_width=1, border_color="#334155")
         self.actions_article_frame.pack(fill=tk.X, pady=(0, 8), ipady=4)
         
-        ctk.CTkLabel(self.actions_article_frame, text="⚡ Action :", font=("Segoe UI", 11, "bold"), text_color="#94A3B8").pack(side=tk.LEFT, padx=12)
+        ctk.CTkLabel(self.actions_article_frame, text="Action :", font=("Segoe UI", 11, "bold"), text_color="#94A3B8").pack(side=tk.LEFT, padx=12)
         
         self.btn_scan_one = ctk.CTkButton(self.actions_article_frame, text="+1 Scanner", fg_color="#2563EB", hover_color="#1D4ED8", text_color="white", font=("Segoe UI", 11, "bold"), height=32, corner_radius=6, command=lambda: self.manual_scan(1))
         self.btn_scan_one.pack(side=tk.LEFT, padx=4)
@@ -912,7 +938,7 @@ class SotraglaceApp:
         badge_be = ctk.CTkFrame(header_be, fg_color="#1E293B", corner_radius=8, border_width=1, border_color="#2563EB")
         badge_be.pack(side=tk.LEFT, padx=16, pady=12)
         
-        self.lbl_be_header = ctk.CTkLabel(badge_be, text="📐 BUREAU D'ÉTUDE", font=("Segoe UI", 15, "bold"), text_color="#F8FAFC")
+        self.lbl_be_header = ctk.CTkLabel(badge_be, text="BUREAU D'ÉTUDE", font=("Segoe UI", 15, "bold"), text_color="#F8FAFC")
         self.lbl_be_header.pack(side=tk.LEFT, padx=14, pady=8)
         
         # Notebook BE natif CustomTkinter
@@ -927,9 +953,9 @@ class SotraglaceApp:
         )
         self.be_notebook.pack(expand=True, fill=tk.BOTH, padx=4, pady=4)
         
-        self.tab_be_gen = self.be_notebook.add("📝 Génération OF")
-        self.tab_be_matrice = self.be_notebook.add("📊 Matrice Commandes")
-        self.tab_be_charge = self.be_notebook.add("🏭 Charge Machines")
+        self.tab_be_gen = self.be_notebook.add("Génération OF")
+        self.tab_be_matrice = self.be_notebook.add("Matrice Commandes")
+        self.tab_be_charge = self.be_notebook.add("Charge Machines")
         
         self.build_be_gen_ui()
         self.build_be_matrice_ui()
@@ -951,7 +977,7 @@ class SotraglaceApp:
             self.refresh_be_matrice()
         elif "Charge" in tab_text:
             self.refresh_be_charge()
-        self.lbl_be_header.configure(text=f"📐 BUREAU D'ÉTUDE - {tab_text}")
+        self.lbl_be_header.configure(text=f"BUREAU D'ÉTUDE — {tab_text}")
         
         if "Matrice" in tab_text:
             self.refresh_be_matrice()
@@ -970,7 +996,7 @@ class SotraglaceApp:
         # --- Gauche : Commandes ---
         left_be = ctk.CTkFrame(body_be, fg_color="#0F172A", corner_radius=12, border_width=1, border_color="#334155")
         left_be.grid(row=0, column=0, sticky="nsew", padx=(0, 6))
-        ctk.CTkLabel(left_be, text="📋 COMMANDES SAGE", font=("Segoe UI", 12, "bold"), text_color="#38BDF8").pack(pady=(12, 6))
+        ctk.CTkLabel(left_be, text="COMMANDES SAGE", font=("Segoe UI", 12, "bold"), text_color="#38BDF8").pack(pady=(12, 6))
         
         cols_be_cmd = ("cmd", "client")
         tree_be_cmd_frame = ctk.CTkFrame(left_be, fg_color="#1E293B", corner_radius=10, border_width=1, border_color="#334155")
@@ -1007,7 +1033,7 @@ class SotraglaceApp:
         right_be.grid(row=0, column=1, sticky="nsew", padx=(6, 0))
         
         # Haut: Lignes Sage
-        ctk.CTkLabel(right_be, text="📦 LIGNES COMMERCIALES (SAGE)", font=("Segoe UI", 12, "bold"), text_color="#38BDF8").pack(pady=(12, 4))
+        ctk.CTkLabel(right_be, text="LIGNES COMMERCIALES (SAGE)", font=("Segoe UI", 12, "bold"), text_color="#38BDF8").pack(pady=(12, 4))
         
         cols_be_sage = ("ligne", "ref", "designation", "dim", "qte")
         tree_be_sage_frame = ctk.CTkFrame(right_be, fg_color="#1E293B", corner_radius=10, border_width=1, border_color="#334155")
@@ -1036,14 +1062,16 @@ class SotraglaceApp:
         self.tree_be_sage.tag_configure('default_sel', background=sel_blue, foreground='white', font=font_sel)
         
         # Bas: Sous-ensembles (OF)
-        ctk.CTkLabel(right_be, text="🏭 SOUS-ENSEMBLES DE FABRICATION (Nomenclature Atelier)", font=("Segoe UI", 12, "bold"), text_color="#34D399").pack(pady=(12, 4))
+        ctk.CTkLabel(right_be, text="SOUS-ENSEMBLES DE FABRICATION (Nomenclature Atelier)", font=("Segoe UI", 12, "bold"), text_color="#34D399").pack(pady=(12, 4))
         
         # Actions BE
         action_frame = ctk.CTkFrame(right_be, fg_color="transparent")
         action_frame.pack(fill=tk.X, padx=10, pady=4)
-        btn_add_of = ctk.CTkButton(action_frame, text="➕ Créer l'OF", fg_color="#059669", hover_color="#047857", text_color="white", font=("Segoe UI", 11, "bold"), height=32, corner_radius=6, command=self.add_of_dialog)
+        btn_add_of = ctk.CTkButton(action_frame, text="Créer l'OF", image=get_icon("plus"), compound="left",
+                                   fg_color="#059669", hover_color="#047857", text_color="white", font=("Segoe UI", 11, "bold"), height=32, corner_radius=6, command=self.add_of_dialog)
         btn_add_of.pack(side=tk.LEFT, padx=4)
-        btn_print = ctk.CTkButton(action_frame, text="🖨️ Imprimer Étiquettes", fg_color="#2563EB", hover_color="#1D4ED8", text_color="white", font=("Segoe UI", 11, "bold"), height=32, corner_radius=6)
+        btn_print = ctk.CTkButton(action_frame, text="Imprimer Étiquettes", image=get_icon("printer"), compound="left",
+                                  fg_color="#2563EB", hover_color="#1D4ED8", text_color="white", font=("Segoe UI", 11, "bold"), height=32, corner_radius=6)
         btn_print.pack(side=tk.LEFT, padx=4)
         
         cols_be_of = ("id", "prod", "design", "observ", "qte", "parcours")
@@ -1327,9 +1355,10 @@ class SotraglaceApp:
         
         badge_mat = ctk.CTkFrame(header_mat, fg_color="#1E293B", corner_radius=8, border_width=1, border_color="#2563EB")
         badge_mat.pack(side=tk.LEFT, padx=16, pady=12)
-        ctk.CTkLabel(badge_mat, text="📊 MATRICE D'AVANCEMENT DES COMMANDES", font=("Segoe UI", 14, "bold"), text_color="#38BDF8").pack(padx=14, pady=6)
+        ctk.CTkLabel(badge_mat, text="MATRICE D'AVANCEMENT DES COMMANDES", font=("Segoe UI", 14, "bold"), text_color="#38BDF8").pack(padx=14, pady=6)
         
-        btn_refresh = ctk.CTkButton(header_mat, text="🔄 Actualiser Matrice", font=("Segoe UI", 12, "bold"), 
+        btn_refresh = ctk.CTkButton(header_mat, text="Actualiser Matrice", font=("Segoe UI", 12, "bold"), 
+                                    image=get_icon("refresh"), compound="left",
                                     fg_color="#059669", hover_color="#047857", text_color="white", 
                                     height=36, corner_radius=8, command=self.refresh_be_matrice)
         btn_refresh.pack(side=tk.RIGHT, padx=16, pady=16)
@@ -1385,7 +1414,7 @@ class SotraglaceApp:
             cursor.execute("SELECT ID_OF, PROD, DESIGN, LignesSage FROM CdeDetail WHERE CDE = ?", (cde,))
             ofs = cursor.fetchall()
             
-            cde_node = self.tree_matrice.insert("", "end", text=f"📦 CDE {cde}", open=False)
+            cde_node = self.tree_matrice.insert("", "end", text=f"CDE {cde}", open=False)
             
             cde_total_scans_any = 0
             cde_all_done = True
@@ -1393,7 +1422,7 @@ class SotraglaceApp:
             
             for of in ofs:
                 id_of, prod, design, lignes_sage = of
-                of_node = self.tree_matrice.insert(cde_node, "end", text=f"⚙️ {id_of} - {design}", open=False)
+                of_node = self.tree_matrice.insert(cde_node, "end", text=f"{id_of} — {design}", open=False)
                 
                 # Fetch OF Gammes
                 cursor.execute("SELECT CodeOp FROM OF_Gammes WHERE ID_OF = ?", (id_of,))
@@ -1510,9 +1539,10 @@ class SotraglaceApp:
         
         badge_charge = ctk.CTkFrame(header_charge, fg_color="#1E293B", corner_radius=8, border_width=1, border_color="#2563EB")
         badge_charge.pack(side=tk.LEFT, padx=16, pady=12)
-        ctk.CTkLabel(badge_charge, text="🏭 CHARGE DES POSTES & MACHINES", font=("Segoe UI", 14, "bold"), text_color="#38BDF8").pack(padx=14, pady=6)
+        ctk.CTkLabel(badge_charge, text="CHARGE DES POSTES & MACHINES", font=("Segoe UI", 14, "bold"), text_color="#38BDF8").pack(padx=14, pady=6)
         
-        btn_refresh = ctk.CTkButton(header_charge, text="🔄 Actualiser Charge", font=("Segoe UI", 12, "bold"), 
+        btn_refresh = ctk.CTkButton(header_charge, text="Actualiser Charge", font=("Segoe UI", 12, "bold"), 
+                                    image=get_icon("refresh"), compound="left",
                                     fg_color="#059669", hover_color="#047857", text_color="white", 
                                     height=36, corner_radius=8, command=self.refresh_be_charge)
         btn_refresh.pack(side=tk.RIGHT, padx=16, pady=16)
@@ -1525,7 +1555,7 @@ class SotraglaceApp:
         left_frame.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 6))
         left_frame.pack_propagate(False)
         
-        ctk.CTkLabel(left_frame, text="⚙️ SÉLECTION DU POSTE / MACHINE", font=("Segoe UI", 12, "bold"), text_color="#38BDF8").pack(pady=(12, 6))
+        ctk.CTkLabel(left_frame, text="SÉLECTION DU POSTE / MACHINE", font=("Segoe UI", 12, "bold"), text_color="#38BDF8").pack(pady=(12, 6))
         
         tree_mach_frame = ctk.CTkFrame(left_frame, fg_color="#1E293B", corner_radius=10, border_width=1, border_color="#334155")
         tree_mach_frame.pack(expand=True, fill=tk.BOTH, padx=10, pady=(0, 10))
@@ -1553,15 +1583,15 @@ class SotraglaceApp:
         # En-têtes des 3 colonnes Kanban
         h_attente = ctk.CTkFrame(right_frame, fg_color="#1E293B", corner_radius=8, border_width=1, border_color="#334155")
         h_attente.grid(row=0, column=0, sticky="ew", padx=8, pady=(10, 6), ipady=4)
-        ctk.CTkLabel(h_attente, text="📥 À FAIRE / EN ATTENTE", font=("Segoe UI", 12, "bold"), text_color="#94A3B8").pack(pady=4)
+        ctk.CTkLabel(h_attente, text="À FAIRE / EN ATTENTE", font=("Segoe UI", 12, "bold"), text_color="#94A3B8").pack(pady=4)
         
         h_encours = ctk.CTkFrame(right_frame, fg_color="#78350F", corner_radius=8, border_width=1, border_color="#D97706")
         h_encours.grid(row=0, column=1, sticky="ew", padx=8, pady=(10, 6), ipady=4)
-        ctk.CTkLabel(h_encours, text="⏳ EN COURS DE FABRICATION", font=("Segoe UI", 12, "bold"), text_color="#FDE68A").pack(pady=4)
+        ctk.CTkLabel(h_encours, text="EN COURS DE FABRICATION", font=("Segoe UI", 12, "bold"), text_color="#FDE68A").pack(pady=4)
         
         h_termine = ctk.CTkFrame(right_frame, fg_color="#064E3B", corner_radius=8, border_width=1, border_color="#059669")
         h_termine.grid(row=0, column=2, sticky="ew", padx=8, pady=(10, 6), ipady=4)
-        ctk.CTkLabel(h_termine, text="✅ TERMINÉ SUR CE POSTE", font=("Segoe UI", 12, "bold"), text_color="#A7F3D0").pack(pady=4)
+        ctk.CTkLabel(h_termine, text="TERMINÉ SUR CE POSTE", font=("Segoe UI", 12, "bold"), text_color="#A7F3D0").pack(pady=4)
         
         # Listes avec style industriel sombre
         def create_kanban_list(parent, col):
@@ -1722,20 +1752,20 @@ class SotraglaceApp:
             
             if mes_scans >= qte and qte > 0:
                 statut_txt = "Terminé"
-                situation = "✅ Terminé à ce poste"
+                situation = "Terminé à ce poste"
                 tag = "terminee"
             elif mes_scans > 0:
                 statut_txt = f"En cours ({mes_scans}/{qte})"
                 tag = "encours"
                 if dispo > 0:
-                    situation = f"▶️ Prêt à produire : {dispo} dispo"
+                    situation = f"Prêt à produire : {dispo} dispo"
                 else:
-                    situation = f"En attente étape précédente"
+                    situation = "En attente étape précédente"
             else:
                 statut_txt = "Pas démarré"
                 tag = "pas_demarre"
                 if dispo > 0:
-                    situation = f"▶️ Prêt à produire : {dispo} dispo"
+                    situation = f"Prêt à produire : {dispo} dispo"
                 else:
                     situation = "Bloqué (Étape précédente non finie)"
                 
@@ -1986,7 +2016,7 @@ class SotraglaceApp:
         card = ctk.CTkFrame(sim_win, fg_color="#0F172A", corner_radius=12, border_width=1, border_color="#334155")
         card.pack(fill=tk.BOTH, expand=True, padx=16, pady=16)
         
-        ctk.CTkLabel(card, text="🔫 SIMULATEUR DOUCHETTE ATELIER", font=("Segoe UI", 14, "bold"), text_color="#38BDF8").pack(pady=(16, 8))
+        ctk.CTkLabel(card, text="SIMULATEUR DOUCHETTE ATELIER", font=("Segoe UI", 14, "bold"), text_color="#38BDF8").pack(pady=(16, 8))
         
         info_frame = ctk.CTkFrame(card, fg_color="#1E293B", corner_radius=10, border_width=1, border_color="#334155")
         info_frame.pack(fill=tk.BOTH, expand=True, padx=16, pady=6)
@@ -2002,7 +2032,8 @@ class SotraglaceApp:
             self.process_scan(barcode)
             sim_win.destroy()
             
-        ctk.CTkButton(card, text="⚡ Valider le Scan de l'OF", font=("Segoe UI", 13, "bold"), 
+        ctk.CTkButton(card, text="Valider le Scan de l'OF", font=("Segoe UI", 13, "bold"), 
+                      image=get_icon("barcode"), compound="left",
                       fg_color="#059669", hover_color="#047857", text_color="white", 
                       height=38, corner_radius=8, command=do_scan).pack(fill=tk.X, padx=16, pady=(8, 14))
 

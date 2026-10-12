@@ -29,7 +29,7 @@ def clean():
         conn.close()
         print("-> Tables Scans, OF_Gammes, CdeDetail, Gammes et Produits vidées.")
 
-    print("\n✅ Nettoyage terminé ! Les données de test ont été entièrement supprimées.")
+    print("\n[OK] Nettoyage terminé ! Les données de test ont été entièrement supprimées.")
 
 if __name__ == "__main__":
     clean()

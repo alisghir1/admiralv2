@@ -76,11 +76,11 @@ def patch():
             
             if mes_scans >= qte:
                 statut_txt = "Terminé"
-                situation = "✔ Terminé à ce poste"
+                situation = "Terminé à ce poste"
                 tag = "terminee"
             elif dispo > 0:
                 statut_txt = f"En cours ({mes_scans}/{qte})"
-                situation = f"► Prêt à produire : {dispo} dispo"
+                situation = f"Prêt à produire : {dispo} dispo"
                 tag = "pret"
             elif mes_scans > 0:
                 statut_txt = f"En cours ({mes_scans}/{qte})"
