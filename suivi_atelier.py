@@ -293,7 +293,8 @@ class SotraglaceApp:
         # Configuration des Treeview
         self.style.configure("Treeview", 
                              background="#2D2D30", foreground="#FFFFFF", 
-                             fieldbackground="#2D2D30", rowheight=36, font=("Segoe UI", 12))
+                             fieldbackground="#2D2D30", rowheight=36, font=("Segoe UI", 12),
+                             indicatorsize=14, indicatormargins=6)
         self.style.configure("Treeview.Heading", 
                              background="#3E3E42", foreground="#FFFFFF", 
                              font=("Segoe UI", 12, "bold"))
@@ -1164,7 +1165,7 @@ class SotraglaceApp:
                 lignes_keys = lignes_sage.split(",")
                 for l_key in lignes_keys:
                     l_key = l_key.strip()
-                    ligne_data = lignes_dict.get(l_key)
+                    ligne_data = lignes_dict.get(l_key) or lignes_dict.get(f"{do_piece}-{l_key}")
                     if ligne_data:
                         dl_ligne = ligne_data.get("DL_Ligne", "")
                         ref = ligne_data.get("AR_Ref", "")
@@ -1632,7 +1633,7 @@ class SotraglaceApp:
                 
                 for l_key in lignes_keys:
                     l_key = l_key.strip()
-                    ligne_data = lignes_dict.get(l_key)
+                    ligne_data = lignes_dict.get(l_key) or lignes_dict.get(f"{do_piece}-{l_key}")
                     if ligne_data:
                         dl_ligne = ligne_data.get("DL_Ligne", "")
                         ref = ligne_data.get("AR_Ref", "")

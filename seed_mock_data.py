@@ -76,7 +76,7 @@ def seed():
     cursor.execute("""
         INSERT INTO CdeDetail (ID_OF, CDE, PROD, DESIGN, OBSERV, Qte, LignesSage)
         VALUES (?, ?, ?, ?, ?, ?, ?)
-    """, ("OF-1001", "CC240001", "VITR-4-16-4", "Double Vitrage 4/16/4 Clair", "1200 x 800 mm", 5, "1000"))
+    """, ("OF-1001", "CC240001", "VITR-4-16-4", "Double Vitrage 4/16/4 Clair", "1200 x 800 mm", 7, "CC240001-1000,CC240001-2000"))
 
     cursor.execute("INSERT INTO OF_Gammes (ID_OF, Ordre, CodeOp, Poste_Assigne) VALUES (?, ?, ?, ?)", ("OF-1001", 1, "DEC", "DEC1"))
     cursor.execute("INSERT INTO OF_Gammes (ID_OF, Ordre, CodeOp, Poste_Assigne) VALUES (?, ?, ?, ?)", ("OF-1001", 2, "FAC", "FAC1"))
@@ -86,7 +86,7 @@ def seed():
     cursor.execute("""
         INSERT INTO CdeDetail (ID_OF, CDE, PROD, DESIGN, OBSERV, Qte, LignesSage)
         VALUES (?, ?, ?, ?, ?, ?, ?)
-    """, ("OF-1002", "CC240002", "MIROIR-ARGENT-4", "Miroir Argent 4mm JPP", "1500 x 600 mm", 4, "1000"))
+    """, ("OF-1002", "CC240002", "MIROIR-ARGENT-4", "Miroir Argent 4mm JPP", "1500 x 600 mm", 4, "CC240002-1000"))
 
     cursor.execute("INSERT INTO OF_Gammes (ID_OF, Ordre, CodeOp, Poste_Assigne) VALUES (?, ?, ?, ?)", ("OF-1002", 1, "DEC", "DEC1"))
     cursor.execute("INSERT INTO OF_Gammes (ID_OF, Ordre, CodeOp, Poste_Assigne) VALUES (?, ?, ?, ?)", ("OF-1002", 2, "FAC", "FAC1"))
