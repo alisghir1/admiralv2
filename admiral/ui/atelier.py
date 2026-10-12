@@ -12,7 +12,7 @@ from ..journal import journal
 from .carte_of import CarteOF, VueEtape, VueLigne, VueOF
 from .composants import bouton, carte, champ, defiler_vers, tableau, texte, titre
 from .dialogs import HistoriqueDialog
-from .widgets import get_icon, maj_tags_selection
+from .widgets import FenetreDialogue, get_icon, maj_tags_selection
 
 FILTRES_COMMANDES = {"Toutes": None, "En cours": "encours", "À faire": "pas_demarre", "Terminées": "terminee"}
 LIBELLES_AVANCEMENT = {"encours": "En cours", "pas_demarre": "À faire", "terminee": "Terminée"}
@@ -459,7 +459,7 @@ class AtelierMixin:
             messagebox.showinfo("Simuler un scan", "Cliquez d'abord sur une carte d'OF pour choisir la pièce à scanner.")
             return
 
-        fenetre = ctk.CTkToplevel(self.root)
+        fenetre = FenetreDialogue(self.root)
         fenetre.title("Simuler un scan")
         fenetre.geometry("460x300")
         fenetre.configure(fg_color=T.FOND)

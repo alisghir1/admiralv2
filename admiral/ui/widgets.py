@@ -72,3 +72,33 @@ def maj_tags_selection(tree):
         new_tag = f"{base_tag}_sel" if item in selected_items else base_tag
         if tags[0] != new_tag:
             tree.item(item, tags=(new_tag,))
+
+
+class FenetreDialogue(ctk.CTkToplevel):
+    """Fenêtre secondaire sûre sous Windows.
+
+    Sous Windows, CTkToplevel programme des tâches différées (icône à 200 ms, couleur de la barre de
+    titre, tailles min/max à 1 s). Si la fenêtre est fermée avant, ces tâches agissent sur une fenêtre
+    détruite et font planter Tk (violation d'accès). On les ignore quand la fenêtre n'existe plus."""
+
+    def _existe(self):
+        try:
+            return bool(self.winfo_exists())
+        except tk.TclError:
+            return False
+
+    def _windows_set_titlebar_icon(self):
+        if self._existe():
+            super()._windows_set_titlebar_icon()
+
+    def _set_scaled_min_max(self):
+        if self._existe():
+            super()._set_scaled_min_max()
+
+    def _windows_set_titlebar_color(self, color_mode):
+        if self._existe():
+            super()._windows_set_titlebar_color(color_mode)
+
+    def _revert_withdraw_after_windows_set_titlebar_color(self):
+        if self._existe():
+            super()._revert_withdraw_after_windows_set_titlebar_color()

@@ -8,12 +8,12 @@ import customtkinter as ctk
 from .. import theme as T
 from ..config import CODE_BUREAU_ETUDE_DEFAUT, POSTE_BUREAU_ETUDE
 from .composants import bouton, carte, champ, tableau, texte, titre
-from .widgets import capturer_focus, centrer_fenetre, maj_tags_selection
+from .widgets import FenetreDialogue, capturer_focus, centrer_fenetre, maj_tags_selection
 
 POSTE_LIBRE = "Libre (n'importe quel poste)"
 
 
-class ConfigDialog(ctk.CTkToplevel):
+class ConfigDialog(FenetreDialogue):
     """Choix du poste de ce PC : « Bureau d'étude » (protégé par un code) ou un poste machine.
     postes : libellés "CODE - Désignation" des machines. result = libellé choisi ou None."""
 
@@ -127,7 +127,7 @@ def afficher_date(iso):
     return date.fromisoformat(iso).strftime("%d/%m/%Y") if iso else ""
 
 
-class _FormulaireOF(ctk.CTkToplevel):
+class _FormulaireOF(FenetreDialogue):
     """Squelette commun à la création et à la modification d'un OF : en-tête, champs, erreurs, boutons."""
 
     def __init__(self, parent, titre_fenetre, titre_formulaire, sous_titre, libelle_valider, largeur=1160, hauteur=690):
@@ -434,7 +434,7 @@ class ModifierOfDialog(_FormulaireOF):
         self.destroy()
 
 
-class HistoriqueDialog(ctk.CTkToplevel):
+class HistoriqueDialog(FenetreDialogue):
     """Historique des scans d'un OF (lecture seule). lignes : Depot.historique_scans()."""
 
     def __init__(self, parent, of, lignes):
