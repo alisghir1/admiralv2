@@ -36,8 +36,8 @@ def lancer(root, app, resultat):
             # Mode poste machine : l'écran Atelier seul, barre d'onglets masquée
             if app.est_bureau_etude:
                 passer_en(app.libelles_postes()[0])
-            if app.notebook._segmented_button.winfo_manager():
-                raise RuntimeError("la barre d'onglets est visible sur un poste machine")
+            if app.notebook.winfo_manager() or not app.tab_atelier.winfo_manager():
+                raise RuntimeError("un poste machine doit afficher l'écran Atelier seul")
             commandes = app.tree_cmd.get_children()
             if commandes:
                 app.tree_cmd.selection_set(commandes[0])
@@ -49,8 +49,8 @@ def lancer(root, app, resultat):
             # Mode Bureau d'étude : tous les onglets sauf Atelier
             passer_en(POSTE_BUREAU_ETUDE)
             onglets = list(app.notebook._segmented_button.cget("values"))
-            if app.NOM_ONGLET_ATELIER in onglets:
-                raise RuntimeError("l'onglet Atelier est visible au Bureau d'étude")
+            if app.tab_atelier.winfo_manager() or app.NOM_ONGLET_ATELIER in onglets:
+                raise RuntimeError("l'écran Atelier est visible au Bureau d'étude")
             for onglet in onglets:
                 app.notebook.set(onglet)
                 app.on_main_tab_changed()

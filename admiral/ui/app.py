@@ -32,8 +32,7 @@ class Onglets(ctk.CTkTabview):
 
     def _set_grid_current_tab(self):
         super()._set_grid_current_tab()
-        if self._segmented_button.winfo_manager():  # barre affichée (masquée sur un poste machine)
-            self._tab_dict[self._current_name].grid_configure(pady=(self.ESPACE_SOUS_BARRE, 0))
+        self._tab_dict[self._current_name].grid_configure(pady=(self.ESPACE_SOUS_BARRE, 0))
 
 
 class SotraglaceApp(AtelierMixin, SyntheseMixin, GenerationOFMixin, MatriceMixin, ChargeMixin, AdministrationMixin):
@@ -174,25 +173,20 @@ class SotraglaceApp(AtelierMixin, SyntheseMixin, GenerationOFMixin, MatriceMixin
             self.scan_entry.focus_set()
 
     def _appliquer_mode(self):
-        """Bureau d'étude : tous les onglets sauf Atelier, sans douchette.
-        Poste machine : l'écran Atelier seul (barre d'onglets masquée), douchette active."""
-        barre = self.notebook._segmented_button
+        """Bureau d'étude : les onglets de pilotage (sans Atelier), sans douchette.
+        Poste machine : l'écran Atelier seul, douchette active.
+        Les deux écrans existent en permanence : on affiche l'un et on masque l'autre. Aucun élément
+        n'est détruit ni recréé (recréer les boutons d'onglets faisait planter Tk sous Windows)."""
         if self.est_bureau_etude:
-            onglets = [self.NOM_ONGLET_SYNTHESE, self.NOM_ONGLET_GENERATION, self.NOM_ONGLET_MATRICE,
-                       self.NOM_ONGLET_CHARGE, self.NOM_ONGLET_ADMIN]
-            barre.configure(values=onglets)
-            self.notebook._configure_grid()
-            self.notebook._set_grid_segmented_button()
-            self.notebook.set(onglets[0])
+            self.tab_atelier.pack_forget()
+            self.notebook.pack(expand=True, fill=tk.BOTH, padx=T.ESPACE_L, pady=(0, T.ESPACE_M))
+            self.notebook.set(self.NOM_ONGLET_SYNTHESE)
             self.root.unbind("<Button-1>")
             self.root.unbind("<Any-KeyPress>")
             self.on_main_tab_changed()
         else:
-            barre.configure(values=[self.NOM_ONGLET_ATELIER])
-            barre.grid_forget()
-            self.notebook.grid_rowconfigure(1, minsize=0)
-            self.notebook.grid_rowconfigure(2, minsize=0)
-            self.notebook.set(self.NOM_ONGLET_ATELIER)
+            self.notebook.pack_forget()
+            self.tab_atelier.pack(expand=True, fill=tk.BOTH, padx=T.ESPACE_L, pady=(10, T.ESPACE_M))
             self.root.bind("<Button-1>", self.on_global_click)
             self.root.bind("<Any-KeyPress>", self.force_focus)
             self.scan_entry.focus_set()
@@ -240,9 +234,9 @@ class SotraglaceApp(AtelierMixin, SyntheseMixin, GenerationOFMixin, MatriceMixin
         # à sa barre d'onglets : on redonne à la barre ses propres coins arrondis (onglets en pilule).
         self.notebook._segmented_button.configure(font=T.police(T.TAILLE_SOUS_TITRE, gras=True),
                                                   corner_radius=T.RAYON_ONGLET, border_width=4)
-        self.notebook.pack(expand=True, fill=tk.BOTH, padx=T.ESPACE_L, pady=(0, T.ESPACE_M))
 
-        self.tab_atelier = self.notebook.add(self.NOM_ONGLET_ATELIER)
+        # Écran Atelier (postes machines) : panneau à part, affiché à la place des onglets
+        self.tab_atelier = ctk.CTkFrame(self.root, fg_color=T.FOND, corner_radius=0)
         self.tab_synthese = self.notebook.add(self.NOM_ONGLET_SYNTHESE)
         self.tab_be_gen = self.notebook.add(self.NOM_ONGLET_GENERATION)
         self.tab_be_matrice = self.notebook.add(self.NOM_ONGLET_MATRICE)
@@ -293,8 +287,6 @@ class SotraglaceApp(AtelierMixin, SyntheseMixin, GenerationOFMixin, MatriceMixin
             self.refresh_synthese()
         elif onglet == self.NOM_ONGLET_ADMIN:
             self.refresh_admin()
-        elif onglet == self.NOM_ONGLET_ATELIER:
-            self.scan_entry.focus_set()
 
     # --- Listes de commandes ---
 

@@ -320,8 +320,6 @@ class AtelierMixin:
             return  # pas de scan au Bureau d'étude (l'écran Atelier n'y est pas affiché)
         qr_code = qr_code.strip().upper()
         self.recharger_etat()
-        if self.notebook.get() != self.NOM_ONGLET_ATELIER:
-            self.notebook.set(self.NOM_ONGLET_ATELIER)  # un scan ramène toujours à l'écran Atelier
 
         # Code commande (CMD-xxxx) : affiche la commande sans enregistrer de scan
         if qr_code.startswith("CMD-"):

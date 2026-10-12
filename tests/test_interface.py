@@ -220,11 +220,10 @@ class Interface(unittest.TestCase):
             self.app._focus_actuel = focus_reel
             self.app.scan_var.set("")
 
-    def test_13_scan_ramene_a_l_atelier(self):
-        self.app.notebook.set(self.app.NOM_ONGLET_CHARGE)
+    def test_13_scan_d_une_commande(self):
         self.app.process_scan("CMD-CC1")
-        self.assertEqual(self.app.notebook.get(), self.app.NOM_ONGLET_ATELIER)
         self.assertEqual(self.app.commande_affichee, "CC1")
+        self.assertEqual(self.bandeau()[0], "Commande CC1")
 
     # --- Phase 4 : suivi des OF, synthèse, administration ---
 
@@ -393,10 +392,8 @@ class Interface(unittest.TestCase):
 
     def test_24_poste_machine_atelier_seul(self):
         self.passer_en(next(p for p in self.app.libelles_postes() if p.startswith("DEC1 ")))
-        barre = self.app.notebook._segmented_button
-        self.assertEqual(list(barre.cget("values")), [self.app.NOM_ONGLET_ATELIER])
-        self.assertEqual(barre.winfo_manager(), "", "barre d'onglets masquée sur un poste machine")
-        self.assertEqual(self.app.notebook.get(), self.app.NOM_ONGLET_ATELIER)
+        self.assertEqual(self.app.tab_atelier.winfo_manager(), "pack", "écran Atelier affiché")
+        self.assertEqual(self.app.notebook.winfo_manager(), "", "onglets du Bureau d'étude masqués")
         self.assertIn("Poste DEC1", self.app.lbl_title.cget("text"))
 
     def test_25_bureau_etude_sans_atelier(self):
@@ -404,10 +401,10 @@ class Interface(unittest.TestCase):
         self.passer_en(POSTE_BUREAU_ETUDE)
         try:
             onglets = list(self.app.notebook._segmented_button.cget("values"))
-            self.assertNotIn(self.app.NOM_ONGLET_ATELIER, onglets)
             self.assertEqual(onglets, [self.app.NOM_ONGLET_SYNTHESE, self.app.NOM_ONGLET_GENERATION, self.app.NOM_ONGLET_MATRICE,
                                        self.app.NOM_ONGLET_CHARGE, self.app.NOM_ONGLET_ADMIN])
-            self.assertEqual(self.app.notebook._segmented_button.winfo_manager(), "grid")
+            self.assertEqual(self.app.notebook.winfo_manager(), "pack", "onglets affichés")
+            self.assertEqual(self.app.tab_atelier.winfo_manager(), "", "écran Atelier masqué")
             self.assertEqual(self.app.lbl_title.cget("text").strip(), "Bureau d'étude")
             self.assertNotIn("Poste", self.app.lbl_title.cget("text"))
             # Pas de douchette : un caractère tapé ne part pas dans le champ de scan

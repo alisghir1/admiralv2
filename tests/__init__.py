@@ -29,26 +29,6 @@ if os.environ.get("GITHUB_ACTIONS"):
     unittest.TextTestResult.addFailure = addFailure
     unittest.TextTestResult.addError = addError
 
-    # Diagnostic : début, bilan et erreurs hors tests (plantage, exception non rattrapée)
-    import atexit
+    # Un plantage du moteur graphique (Tk) affiche la pile d'appels au lieu d'arrêter le processus en silence
     import faulthandler
-    import traceback
     faulthandler.enable()
-    print("::notice title=Tests::démarrage de la suite", flush=True)
-    _bilan = {"tests": 0, "echecs": 0}
-    _demarrer = unittest.TextTestResult.startTest
-
-    def startTest(self, test):
-        _bilan["tests"] += 1
-        _demarrer(self, test)
-
-    unittest.TextTestResult.startTest = startTest
-    atexit.register(lambda: print(f"::notice title=Tests::{_bilan['tests']} tests lancés", flush=True))
-    _hook = sys.excepthook
-
-    def excepthook(type_exc, valeur, trace):
-        texte = "".join(traceback.format_exception(type_exc, valeur, trace)).replace("\n", "%0A")
-        print(f"::error title=Exception non rattrapée::{texte}", flush=True)
-        _hook(type_exc, valeur, trace)
-
-    sys.excepthook = excepthook
