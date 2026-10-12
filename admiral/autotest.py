@@ -23,22 +23,39 @@ def lancer(root, app, resultat):
             if manquantes:
                 raise RuntimeError(f"icônes introuvables : {', '.join(manquantes)}")
             log.info("Autotest : icônes OK")
-            for onglet in (app.NOM_ONGLET_ATELIER, app.NOM_ONGLET_SYNTHESE, app.NOM_ONGLET_GENERATION,
-                           app.NOM_ONGLET_MATRICE, app.NOM_ONGLET_CHARGE, app.NOM_ONGLET_ADMIN):
-                app.notebook.set(onglet)
-                app.on_main_tab_changed()
-                root.update()
-                log.info("Autotest : onglet %s OK", onglet)
+            from .config import POSTE_BUREAU_ETUDE
+            poste_initial = app.poste_actuel
 
-            app.notebook.set(app.NOM_ONGLET_ATELIER)
+            def passer_en(poste):
+                app.poste_actuel = poste
+                app._maj_entete_poste()
+                app._appliquer_mode()
+                app.refresh_dashboard()
+                root.update()
+
+            # Mode poste machine : l'écran Atelier seul, barre d'onglets masquée
+            if app.est_bureau_etude:
+                passer_en(app.libelles_postes()[0])
+            if app.notebook._segmented_button.winfo_ismapped():
+                raise RuntimeError("la barre d'onglets est visible sur un poste machine")
             commandes = app.tree_cmd.get_children()
             if commandes:
                 app.tree_cmd.selection_set(commandes[0])
                 app.on_order_select()
             app.process_scan("AUTOTEST-CODE-INCONNU")   # chemin d'erreur, n'écrit rien
             root.update()
-            log.info("Autotest : atelier OK (%d commandes, %d cartes)", len(commandes), len(app.cartes))
+            log.info("Autotest : poste %s, atelier OK (%d commandes, %d cartes)", app.get_codpost(), len(commandes), len(app.cartes))
 
+            # Mode Bureau d'étude : tous les onglets sauf Atelier
+            passer_en(POSTE_BUREAU_ETUDE)
+            onglets = list(app.notebook._segmented_button.cget("values"))
+            if app.NOM_ONGLET_ATELIER in onglets:
+                raise RuntimeError("l'onglet Atelier est visible au Bureau d'étude")
+            for onglet in onglets:
+                app.notebook.set(onglet)
+                app.on_main_tab_changed()
+                root.update()
+                log.info("Autotest : Bureau d'étude, onglet %s OK", onglet)
             for section in ("Produits et gammes", "Opérations", "Postes", "Import Excel"):
                 app._afficher_section_admin(section)
                 root.update()
@@ -52,6 +69,7 @@ def lancer(root, app, resultat):
                 fenetre.update()
                 fenetre.destroy()
             log.info("Autotest : %d fenêtres OK", len(fenetres))
+            passer_en(poste_initial)   # aucune configuration n'est écrite : on revient au poste de départ
             log.info("AUTOTEST RÉUSSI")
             resultat["code"] = 0
         except Exception:

@@ -69,6 +69,18 @@ class AnnulationsEtHistorique(unittest.TestCase):
         self.assertFalse(etat.en_retard(etat.ofs[id_of], date(2026, 10, 12)), "un OF terminé n'est plus en retard")
 
 
+class AvancementGlobal(unittest.TestCase):
+    def test_commande(self):
+        depot, id_of = depot_avec_of()                       # DEC > FAC, 4 pièces
+        etat = depot.charger_etat()
+        self.assertEqual(progression.avancement_global_commande(etat, "CC1"), (0, 4, "pas_demarre"))
+        depot.ajouter_scans(id_of, [("DEC1", 4), ("FAC1", 1)])
+        self.assertEqual(progression.avancement_global_commande(depot.charger_etat(), "CC1"), (1, 4, "encours"))
+        depot.ajouter_scans(id_of, [("FAC1", 3)])
+        self.assertEqual(progression.avancement_global_commande(depot.charger_etat(), "CC1"), (4, 4, "terminee"))
+        self.assertEqual(progression.avancement_global_commande(depot.charger_etat(), "CC9"), (0, 0, "pas_demarre"))
+
+
 class Administration(unittest.TestCase):
     def setUp(self):
         self.depot, self.id_of = depot_avec_of()

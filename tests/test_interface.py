@@ -360,6 +360,99 @@ class Interface(unittest.TestCase):
         self.assertIn("Lecture impossible", self.app.lbl_apercu_import.cget("text"))
         self.assertEqual(self.app.btn_importer.cget("state"), "disabled")
 
+    def test_23_filtre_des_commandes_be(self):
+        # À ce stade, les trois commandes du jeu de test ont toutes au moins un OF
+        def etats():
+            return [self.app.tree_be_cmd.item(i, "values")[2] for i in self.app.tree_be_cmd.get_children()]
+        self.app.notebook.set(self.app.NOM_ONGLET_GENERATION)
+        self.app.filtre_be.set("Sans OF")
+        self.app.refresh_dashboard()
+        self.assertEqual(self.app.tree_be_cmd.get_children(), ())
+        self.assertEqual(self.app.lbl_nb_commandes_be.cget("text"), "0 commande")
+        self.app.filtre_be.set("Avec OF")
+        self.app.refresh_dashboard()
+        self.assertEqual(len(self.app.tree_be_cmd.get_children()), 3)
+        self.assertNotIn("Sans OF", etats())
+        self.app.filtre_be.set("En cours")
+        self.app.refresh_dashboard()
+        self.assertTrue(all(e == "En cours" for e in etats()))
+        # Une commande traitée reste visible même si le filtre l'aurait masquée
+        self.app.filtre_be.set("Sans OF")
+        self.app.refresh_dashboard()
+        self.app._garder_commande_visible("CC1")
+        self.assertEqual(self.app.filtre_be.get(), "Toutes les commandes")
+        self.assertEqual(self.app.tree_be_cmd.selection(), ("CC1",))
+    # --- Mode Bureau d'étude / poste machine ---
+
+    def passer_en(self, poste):
+        self.app.poste_actuel = poste
+        self.app._maj_entete_poste()
+        self.app._appliquer_mode()
+        self.app.refresh_dashboard()
+        self.root.update()
+
+    def test_24_poste_machine_atelier_seul(self):
+        self.passer_en(next(p for p in self.app.libelles_postes() if p.startswith("DEC1 ")))
+        barre = self.app.notebook._segmented_button
+        self.assertEqual(list(barre.cget("values")), [self.app.NOM_ONGLET_ATELIER])
+        self.assertFalse(barre.winfo_ismapped(), "barre d'onglets masquée sur un poste machine")
+        self.assertEqual(self.app.notebook.get(), self.app.NOM_ONGLET_ATELIER)
+        self.assertIn("Poste DEC1", self.app.lbl_title.cget("text"))
+
+    def test_25_bureau_etude_sans_atelier(self):
+        from admiral.config import POSTE_BUREAU_ETUDE
+        self.passer_en(POSTE_BUREAU_ETUDE)
+        try:
+            onglets = list(self.app.notebook._segmented_button.cget("values"))
+            self.assertNotIn(self.app.NOM_ONGLET_ATELIER, onglets)
+            self.assertEqual(onglets, [self.app.NOM_ONGLET_SYNTHESE, self.app.NOM_ONGLET_GENERATION, self.app.NOM_ONGLET_MATRICE,
+                                       self.app.NOM_ONGLET_CHARGE, self.app.NOM_ONGLET_ADMIN])
+            self.assertTrue(self.app.notebook._segmented_button.winfo_ismapped())
+            self.assertEqual(self.app.lbl_title.cget("text").strip(), "Bureau d'étude")
+            self.assertNotIn("Poste", self.app.lbl_title.cget("text"))
+            # Pas de douchette : un caractère tapé ne part pas dans le champ de scan
+            class Evenement:
+                char = "O"
+            self.app.scan_var.set("")
+            self.app.force_focus(Evenement())
+            self.assertEqual(self.app.scan_var.get(), "")
+            self.app.process_scan("OF-1000")
+            self.assertEqual(self.app.notebook.get(), self.app.NOM_ONGLET_SYNTHESE, "un scan ne ramène pas à l'Atelier")
+            # Avancement global (tous postes) : CC1 a des pièces sorties de la dernière opération
+            self.assertEqual(self.app.tree_be_cmd.item("CC1", "values")[2], "En cours")
+            self.app.refresh_be_charge()
+            self.assertEqual(self.app.poste_charge, "DEC1", "Charge ouverte sur le premier poste")
+        finally:
+            self.passer_en(next(p for p in self.app.libelles_postes() if p.startswith("DEC1 ")))
+
+    def test_26_code_du_bureau_etude(self):
+        from admiral.config import POSTE_BUREAU_ETUDE
+        from admiral.ui.dialogs import ConfigDialog
+        d = ConfigDialog(self.root, self.app.libelles_postes(), is_cancellable=True, actuel="DEC1 - Découpe Numérique SEKTOR",
+                         code_bureau_etude="4321")
+        self.assertEqual(d.cb.cget("values")[0], POSTE_BUREAU_ETUDE)
+        d.cb.set(POSTE_BUREAU_ETUDE)
+        d._maj_code()
+        d.code_entry.insert(0, "0000")
+        d.on_validate()
+        self.assertIsNone(d.result)
+        self.assertEqual(d.lbl_erreur.cget("text"), "Code incorrect.")
+        d.code_entry.insert(0, "4321")
+        d.on_validate()
+        self.assertEqual(d.result, POSTE_BUREAU_ETUDE)
+        # Déjà au Bureau d'étude : pas de code pour y rester
+        d = ConfigDialog(self.root, self.app.libelles_postes(), is_cancellable=True, actuel=POSTE_BUREAU_ETUDE,
+                         code_bureau_etude="4321")
+        self.assertFalse(d._code_requis())
+        d.on_validate()
+        self.assertEqual(d.result, POSTE_BUREAU_ETUDE)
+        # Un poste machine ne demande pas de code
+        d = ConfigDialog(self.root, self.app.libelles_postes(), is_cancellable=True, actuel=POSTE_BUREAU_ETUDE)
+        d.cb.set("USI1 - Centre Usinage 1")
+        d._maj_code()
+        d.on_validate()
+        self.assertEqual(d.result, "USI1 - Centre Usinage 1")
+
 
 if __name__ == "__main__":
     unittest.main()

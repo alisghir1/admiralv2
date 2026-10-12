@@ -6,6 +6,7 @@ from datetime import date
 import customtkinter as ctk
 
 from .. import theme as T
+from ..config import CODE_BUREAU_ETUDE_DEFAUT, POSTE_BUREAU_ETUDE
 from .composants import bouton, carte, champ, tableau, texte, titre
 from .widgets import capturer_focus, centrer_fenetre, maj_tags_selection
 
@@ -13,13 +14,16 @@ POSTE_LIBRE = "Libre (n'importe quel poste)"
 
 
 class ConfigDialog(ctk.CTkToplevel):
-    """Choix du poste de ce PC. postes : libellés "CODE - Désignation". result = libellé choisi ou None."""
+    """Choix du poste de ce PC : « Bureau d'étude » (protégé par un code) ou un poste machine.
+    postes : libellés "CODE - Désignation" des machines. result = libellé choisi ou None."""
 
-    def __init__(self, parent, postes, is_cancellable=False, actuel=None):
+    def __init__(self, parent, postes, is_cancellable=False, actuel=None, code_bureau_etude=None):
         super().__init__(parent)
         self.is_cancellable = is_cancellable
+        self.actuel = actuel
+        self.code_bureau_etude = code_bureau_etude or CODE_BUREAU_ETUDE_DEFAUT
         self.title("Poste de travail")
-        centrer_fenetre(self, 520, 300)
+        centrer_fenetre(self, 600, 400)
         self.configure(fg_color=T.FOND)
         self.poste_choisi = tk.StringVar()
         self.result = None
@@ -27,33 +31,63 @@ class ConfigDialog(ctk.CTkToplevel):
         cadre = carte(self)
         cadre.pack(fill=tk.BOTH, expand=True, padx=T.ESPACE_L, pady=T.ESPACE_L)
         titre(cadre, "Quel est le poste de ce PC ?", taille=T.TAILLE_TITRE).pack(fill=tk.X, padx=T.ESPACE_XL, pady=(T.ESPACE_XL, T.ESPACE_XS))
-        texte(cadre, "Les scans de ce PC seront enregistrés pour ce poste.").pack(fill=tk.X, padx=T.ESPACE_XL, pady=(0, T.ESPACE_L))
+        texte(cadre, "Machine : écran Atelier. Bureau d'étude : pilotage.").pack(
+            fill=tk.X, padx=T.ESPACE_XL, pady=(0, T.ESPACE_L))
 
-        postes_list = list(postes)
+        postes_list = [POSTE_BUREAU_ETUDE] + list(postes)
         self.cb = ctk.CTkComboBox(cadre, variable=self.poste_choisi, values=postes_list, state="readonly",
+                                  command=lambda _: self._maj_code(),
                                   font=T.police(T.TAILLE_SOUS_TITRE, gras=True), dropdown_font=T.police(T.TAILLE_CORPS),
                                   fg_color=T.SURFACE, border_color=T.BORDURE, text_color=T.TEXTE,
                                   button_color=T.BORDURE, button_hover_color=T.BORDURE_SURVOL,
                                   height=T.HAUTEUR_BOUTON_ATELIER, corner_radius=T.RAYON_CONTROLE)
         self.cb.pack(fill=tk.X, padx=T.ESPACE_XL)
-        if postes_list:
-            self.cb.set(actuel if actuel in postes_list else postes_list[0])
+        # Par défaut : le poste actuel, sinon la première machine (un PC d'atelier est le cas le plus courant)
+        self.cb.set(actuel if actuel in postes_list else postes_list[1 if len(postes_list) > 1 else 0])
+
+        # Code du Bureau d'étude, affiché seulement quand on choisit ce mode
+        self.cadre_code = ctk.CTkFrame(cadre, fg_color="transparent")
+        texte(self.cadre_code, "Code d'accès du Bureau d'étude", gras=True).pack(fill=tk.X, pady=(T.ESPACE_M, T.ESPACE_XS))
+        self.code_entry = champ(self.cadre_code, "Code")
+        self.code_entry.configure(show="•")
+        self.code_entry.pack(fill=tk.X)
+        self.lbl_erreur = ctk.CTkLabel(cadre, text="", font=T.police(T.TAILLE_CORPS, gras=True), text_color=T.ERREUR_TEXTE, anchor="w")
 
         boutons = ctk.CTkFrame(cadre, fg_color="transparent")
         boutons.pack(fill=tk.X, side=tk.BOTTOM, padx=T.ESPACE_XL, pady=T.ESPACE_XL)
         bouton(boutons, "Valider", self.on_validate, style="primaire", width=140).pack(side=tk.RIGHT)
         if self.is_cancellable:
             bouton(boutons, "Annuler", self.on_close, style="secondaire", width=120).pack(side=tk.RIGHT, padx=T.ESPACE_S)
+        self.lbl_erreur.pack(side=tk.BOTTOM, fill=tk.X, padx=T.ESPACE_XL)
+        self._maj_code()
 
         self.protocol("WM_DELETE_WINDOW", self.on_close)
         self.bind("<Return>", lambda e: self.on_validate())
         self.bind("<Escape>", lambda e: self.on_close() if self.is_cancellable else None)
         capturer_focus(self)
 
+    def _code_requis(self):
+        # Pas de code pour rester en Bureau d'étude, seulement pour y entrer
+        return self.poste_choisi.get() == POSTE_BUREAU_ETUDE and self.actuel != POSTE_BUREAU_ETUDE
+
+    def _maj_code(self):
+        self.lbl_erreur.configure(text="")
+        if self._code_requis():
+            self.cadre_code.pack(fill=tk.X, padx=T.ESPACE_XL)
+            self.code_entry.focus_set()
+        else:
+            self.cadre_code.pack_forget()
+
     def on_validate(self):
-        if self.poste_choisi.get():
-            self.result = self.poste_choisi.get()
-            self.destroy()
+        if not self.poste_choisi.get():
+            return
+        if self._code_requis() and self.code_entry.get().strip() != self.code_bureau_etude:
+            self.lbl_erreur.configure(text="Code incorrect.")
+            self.code_entry.delete(0, tk.END)
+            self.code_entry.focus_set()
+            return
+        self.result = self.poste_choisi.get()
+        self.destroy()
 
     def on_close(self):
         self.destroy()

@@ -4,6 +4,7 @@ Clés reconnues dans config_poste.json :
 - "poste"           : poste de ce PC, ex. "DEC1 - Découpe Numérique SEKTOR"
 - "base_de_donnees" : chemin de la base SQLite (facultatif ; défaut : suivi_atelier.db à côté de l'application)
 - "dossier_sage"    : dossier des exports CSV Sage (facultatif ; défaut : data/ à côté de l'application)
+- "code_bureau_etude" : code demandé pour passer ce PC en « Bureau d'étude » (facultatif ; défaut : 0000)
 Un chemin relatif est résolu par rapport au dossier de l'application.
 """
 import json
@@ -21,6 +22,10 @@ RESSOURCES_DIR = getattr(sys, '_MEIPASS', APP_DIR)
 CONFIG_FILE = os.path.join(APP_DIR, "config_poste.json")
 LOG_DIR = os.path.join(APP_DIR, "logs")
 ICON_DIR = os.path.join(RESSOURCES_DIR, "assets", "icons")
+
+# Le Bureau d'étude n'est pas une machine : c'est un mode du PC (pilotage, sans l'écran Atelier)
+POSTE_BUREAU_ETUDE = "Bureau d'étude"
+CODE_BUREAU_ETUDE_DEFAUT = "0000"
 
 DB_FILE_DEFAUT = os.path.join(APP_DIR, "suivi_atelier.db")
 DATA_DIR_DEFAUT = os.path.join(APP_DIR, "data")
@@ -59,3 +64,7 @@ def chemin_base(config):
 
 def dossier_sage(config):
     return _resoudre(config.get("dossier_sage"), DATA_DIR_DEFAUT)
+
+
+def code_bureau_etude(config):
+    return str(config.get("code_bureau_etude") or CODE_BUREAU_ETUDE_DEFAUT)

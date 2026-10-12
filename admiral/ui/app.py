@@ -28,6 +28,12 @@ DELAI_RECHERCHE_MS = 250
 class Onglets(ctk.CTkTabview):
     """Barre d'onglets plus haute que celle de CustomTkinter (26 px) : cible confortable à l'atelier."""
     _button_height = 44
+    ESPACE_SOUS_BARRE = 14  # air entre la barre d'onglets et le contenu (sinon ils se touchent)
+
+    def _set_grid_current_tab(self):
+        super()._set_grid_current_tab()
+        if self._segmented_button.winfo_manager():  # barre affichée (masquée sur un poste machine)
+            self._tab_dict[self._current_name].grid_configure(pady=(self.ESPACE_SOUS_BARRE, 0))
 
 
 class SotraglaceApp(AtelierMixin, SyntheseMixin, GenerationOFMixin, MatriceMixin, ChargeMixin, AdministrationMixin):
@@ -73,12 +79,9 @@ class SotraglaceApp(AtelierMixin, SyntheseMixin, GenerationOFMixin, MatriceMixin
         self.root.configure(fg_color=T.FOND)
         configurer_styles_ttk(self.root)
         self.build_ui()
+        self._appliquer_mode()
         self.load_sage_data()
         self.refresh_dashboard()
-
-        self.scan_entry.focus_set()
-        self.root.bind("<Button-1>", self.on_global_click)
-        self.root.bind("<Any-KeyPress>", self.force_focus)
 
     # --- État partagé ---
 
@@ -86,6 +89,17 @@ class SotraglaceApp(AtelierMixin, SyntheseMixin, GenerationOFMixin, MatriceMixin
         """Relit OF, gammes et scans depuis la base (à appeler en début d'action et après chaque écriture)."""
         self.etat = self.depot.charger_etat()
         return self.etat
+
+    @property
+    def est_bureau_etude(self):
+        return self.poste_actuel == cfg.POSTE_BUREAU_ETUDE
+
+    def _signaler(self, type_message, message, detail=""):
+        """Message à l'utilisateur : bandeau de scan à l'atelier, ligne d'information au Bureau d'étude."""
+        if self.est_bureau_etude:
+            self._message_be(f"{message} · {detail}" if detail else message)
+        else:
+            self.update_status_bar(type_message, message, detail)
 
     def get_codpost(self):
         return self.poste_actuel.split(" - ")[0]
@@ -116,15 +130,15 @@ class SotraglaceApp(AtelierMixin, SyntheseMixin, GenerationOFMixin, MatriceMixin
             return None
 
     def _refocus_scan_si_libre(self):
-        if self.notebook.get() == self.NOM_ONGLET_ATELIER and not self._est_champ_saisie(self._focus_actuel()):
+        if not self.est_bureau_etude and not self._est_champ_saisie(self._focus_actuel()):
             self.scan_entry.focus_set()
 
     def force_focus(self, event):
         # La douchette tape comme un clavier : un caractère tapé hors d'un champ de saisie part au scan.
         # Ce premier caractère a déjà été livré au widget précédent : on le recopie pour ne pas le perdre.
         # Les touches sans caractère (flèches, Tab…) restent au widget qui a le focus.
-        if self._est_champ_saisie(self._focus_actuel()):
-            return
+        if self.est_bureau_etude or self._est_champ_saisie(self._focus_actuel()):
+            return  # au Bureau d'étude, pas de douchette : le clavier reste à l'utilisateur
         if event.char and event.char.isprintable():
             self.scan_entry.focus_set()
             self.scan_entry.insert("end", event.char)
@@ -135,7 +149,7 @@ class SotraglaceApp(AtelierMixin, SyntheseMixin, GenerationOFMixin, MatriceMixin
         poste = self.config.get('poste')
         if poste:
             return poste
-        dialog = ConfigDialog(self.root, self.libelles_postes())
+        dialog = ConfigDialog(self.root, self.libelles_postes(), code_bureau_etude=cfg.code_bureau_etude(self.config))
         self.root.wait_window(dialog)
         poste = dialog.result
         cfg.ecrire_config({'poste': poste})
@@ -143,7 +157,8 @@ class SotraglaceApp(AtelierMixin, SyntheseMixin, GenerationOFMixin, MatriceMixin
         return poste
 
     def change_poste(self):
-        dialog = ConfigDialog(self.root, self.libelles_postes(), is_cancellable=True, actuel=self.poste_actuel)
+        dialog = ConfigDialog(self.root, self.libelles_postes(), is_cancellable=True, actuel=self.poste_actuel,
+                              code_bureau_etude=cfg.code_bureau_etude(self.config))
         self.root.wait_window(dialog)
 
         if dialog.result and dialog.result != self.poste_actuel:
@@ -151,10 +166,36 @@ class SotraglaceApp(AtelierMixin, SyntheseMixin, GenerationOFMixin, MatriceMixin
             cfg.ecrire_config({'poste': self.poste_actuel})
             journal().info("Changement de poste : %s", self.poste_actuel)
             self._maj_entete_poste()
+            self._appliquer_mode()
             self.refresh_dashboard()
-            if self.commande_affichee:
+            if self.commande_affichee and not self.est_bureau_etude:
                 self._afficher_commande(self.commande_affichee)
-        self.scan_entry.focus_set()
+        elif not self.est_bureau_etude:
+            self.scan_entry.focus_set()
+
+    def _appliquer_mode(self):
+        """Bureau d'étude : tous les onglets sauf Atelier, sans douchette.
+        Poste machine : l'écran Atelier seul (barre d'onglets masquée), douchette active."""
+        barre = self.notebook._segmented_button
+        if self.est_bureau_etude:
+            onglets = [self.NOM_ONGLET_SYNTHESE, self.NOM_ONGLET_GENERATION, self.NOM_ONGLET_MATRICE,
+                       self.NOM_ONGLET_CHARGE, self.NOM_ONGLET_ADMIN]
+            barre.configure(values=onglets)
+            self.notebook._configure_grid()
+            self.notebook._set_grid_segmented_button()
+            self.notebook.set(onglets[0])
+            self.root.unbind("<Button-1>")
+            self.root.unbind("<Any-KeyPress>")
+            self.on_main_tab_changed()
+        else:
+            barre.configure(values=[self.NOM_ONGLET_ATELIER])
+            barre.grid_forget()
+            self.notebook.grid_rowconfigure(1, minsize=0)
+            self.notebook.grid_rowconfigure(2, minsize=0)
+            self.notebook.set(self.NOM_ONGLET_ATELIER)
+            self.root.bind("<Button-1>", self.on_global_click)
+            self.root.bind("<Any-KeyPress>", self.force_focus)
+            self.scan_entry.focus_set()
 
     # --- Données Sage ---
 
@@ -163,9 +204,9 @@ class SotraglaceApp(AtelierMixin, SyntheseMixin, GenerationOFMixin, MatriceMixin
         if donnees is None:
             try:
                 os.makedirs(self.dossier_sage, exist_ok=True)
-                self.update_status_bar("error", "Dossier Sage créé", f"Placez les exports CSV dans {self.dossier_sage}")
+                self._signaler("error", "Dossier Sage créé", f"Placez les exports CSV dans {self.dossier_sage}")
             except OSError:
-                self.update_status_bar("error", "Dossier Sage introuvable", self.dossier_sage)
+                self._signaler("error", "Dossier Sage introuvable", self.dossier_sage)
             self.lbl_sage.configure(text="Exports Sage absents")
             return
         self.sage = donnees
@@ -175,10 +216,11 @@ class SotraglaceApp(AtelierMixin, SyntheseMixin, GenerationOFMixin, MatriceMixin
     def action_refresh(self):
         self.load_sage_data()
         self.refresh_dashboard()
-        if self.commande_affichee:
+        if self.commande_affichee and not self.est_bureau_etude:
             self._afficher_commande(self.commande_affichee)
-        self.update_status_bar("progress", "Données Sage actualisées", f"{len(self.sage.entetes)} commandes lues")
-        self.scan_entry.focus_set()
+        self._signaler("progress", "Données Sage actualisées", f"{len(self.sage.entetes)} commandes lues")
+        if not self.est_bureau_etude:
+            self.scan_entry.focus_set()
 
     # --- Mise en page ---
 
@@ -233,6 +275,9 @@ class SotraglaceApp(AtelierMixin, SyntheseMixin, GenerationOFMixin, MatriceMixin
         self._maj_entete_poste()
 
     def _maj_entete_poste(self):
+        if self.est_bureau_etude:
+            self.lbl_title.configure(text=f"   {cfg.POSTE_BUREAU_ETUDE}   ")
+            return
         code, _, designation = self.poste_actuel.partition(" - ")
         self.lbl_title.configure(text=f"   Poste {code} · {designation}   " if designation else f"   Poste {code}   ")
 

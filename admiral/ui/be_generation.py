@@ -15,6 +15,17 @@ from .widgets import get_icon, maj_tags_selection
 
 LIBELLES_AVANCEMENT = {"encours": "En cours", "pas_demarre": "À faire", "terminee": "Terminée"}
 
+# Filtre de la liste des commandes : libellé -> test sur (nombre d'OF, texte de la colonne Avancement).
+# L'avancement est global : pièces sorties de la dernière opération de leur gamme, tous postes confondus.
+FILTRES_BE = {
+    "Toutes les commandes": lambda nb_of, etat: True,
+    "Sans OF": lambda nb_of, etat: nb_of == 0,
+    "Avec OF": lambda nb_of, etat: nb_of > 0,
+    "À faire": lambda nb_of, etat: nb_of > 0 and etat == "À faire",
+    "En cours": lambda nb_of, etat: etat == "En cours",
+    "Terminées": lambda nb_of, etat: etat == "Terminée",
+}
+
 
 class GenerationOFMixin:
 
@@ -28,10 +39,23 @@ class GenerationOFMixin:
         # --- Gauche : commandes Sage ---
         gauche = carte(parent)
         gauche.grid(row=0, column=0, sticky="nsew", padx=(0, T.ESPACE_S))
-        titre(gauche, "Commandes Sage", taille=T.TAILLE_TITRE).pack(fill=tk.X, padx=T.ESPACE_L, pady=(T.ESPACE_L, T.ESPACE_S))
+        ligne_titre = ctk.CTkFrame(gauche, fg_color="transparent")
+        ligne_titre.pack(fill=tk.X, padx=T.ESPACE_L, pady=(T.ESPACE_L, T.ESPACE_S))
+        titre(ligne_titre, "Commandes Sage", taille=T.TAILLE_TITRE).pack(side=tk.LEFT)
+        self.lbl_nb_commandes_be = texte(ligne_titre, "")
+        self.lbl_nb_commandes_be.pack(side=tk.RIGHT)
         self.search_be = champ(gauche, "Rechercher une commande ou un client")
         self.search_be.pack(fill=tk.X, padx=T.ESPACE_L, pady=(0, T.ESPACE_S))
         self.search_be.bind("<KeyRelease>", self.on_search_change)
+        ligne_filtre = ctk.CTkFrame(gauche, fg_color="transparent")
+        ligne_filtre.pack(fill=tk.X, padx=T.ESPACE_L, pady=(0, T.ESPACE_S))
+        texte(ligne_filtre, "Afficher").pack(side=tk.LEFT)
+        self.filtre_be = ctk.CTkOptionMenu(
+            ligne_filtre, values=list(FILTRES_BE), command=lambda _: self.refresh_dashboard(), height=36, width=190,
+            corner_radius=T.RAYON_CONTROLE, font=T.police(T.TAILLE_CORPS, gras=True), dropdown_font=T.police(T.TAILLE_CORPS),
+            fg_color=T.SURFACE, button_color=T.BORDURE, button_hover_color=T.BORDURE_SURVOL, text_color=T.TEXTE)
+        self.filtre_be.set("Toutes les commandes")
+        self.filtre_be.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(T.ESPACE_S, 0))
         self.voir_cloturees = tk.BooleanVar(value=False)
         ctk.CTkSwitch(gauche, text="Afficher les commandes clôturées", variable=self.voir_cloturees,
                       command=self.refresh_dashboard, font=T.police(T.TAILLE_CORPS), text_color=T.TEXTE_ATTENUE,
@@ -97,26 +121,28 @@ class GenerationOFMixin:
         self._timer_message_be = self.root.after(T.DUREE_MESSAGE_SUCCES, lambda: self.lbl_be_message.configure(text=""))
 
     def _remplir_commandes_be(self, commandes):
-        """Toutes les commandes Sage, avec l'avancement au poste courant."""
+        """Toutes les commandes Sage, avec leur avancement global."""
         selection = self.tree_be_cmd.selection()
         for item in self.tree_be_cmd.get_children():
             self.tree_be_cmd.delete(item)
-        mon_op, codpost = self.get_mon_op(), self.get_codpost()
+        filtre = FILTRES_BE.get(self.filtre_be.get(), FILTRES_BE["Toutes les commandes"])
         lignes = []
         for do_piece, entete in commandes:
             cloturee = do_piece in self.etat.cloturees
             if cloturee and not self.voir_cloturees.get():
                 continue
             nb_of = len(self.etat.ofs_par_cde.get(do_piece, []))
-            scanned, total, _ = progression.avancement_commande(self.etat, do_piece, mon_op, codpost)
-            tag = progression.tag_avancement(scanned, total)
+            _, _, tag = progression.avancement_global_commande(self.etat, do_piece)
             etat_texte = "Sans OF" if nb_of == 0 else LIBELLES_AVANCEMENT[tag]
+            if not filtre(nb_of, etat_texte):
+                continue
             if cloturee:
                 tag, etat_texte = "cloturee", "Clôturée"
             lignes.append((progression.ORDRE_ETATS.get(tag, 1), (do_piece, entete.get("DO_Tiers", ""), etat_texte), tag))
         lignes.sort(key=lambda ligne: (ligne[2] == "cloturee", ligne[0]))
         for _, valeurs, tag in lignes:
             self.tree_be_cmd.insert("", "end", iid=valeurs[0], values=valeurs, tags=(tag,))
+        self.lbl_nb_commandes_be.configure(text=f"{len(lignes)} commande{'s' if len(lignes) > 1 else ''}")
         if selection and self.tree_be_cmd.exists(selection[0]):
             self.tree_be_cmd.selection_set(selection[0])
         maj_tags_selection(self.tree_be_cmd)
@@ -164,6 +190,7 @@ class GenerationOFMixin:
             return
         self.notebook.set(self.NOM_ONGLET_GENERATION)
         self.search_be.delete(0, tk.END)
+        self.filtre_be.set("Toutes les commandes")
         self.refresh_dashboard()
         if self.tree_be_cmd.exists(of.cde):
             self.tree_be_cmd.selection_set(of.cde)
@@ -173,6 +200,15 @@ class GenerationOFMixin:
             self.tree_be_of.selection_set(of.id)
             self.tree_be_of.see(of.id)
             maj_tags_selection(self.tree_be_of)
+
+    def _garder_commande_visible(self, cde):
+        """Après une action, la commande traitée reste affichée et sélectionnée, même si le filtre l'aurait masquée."""
+        if not self.tree_be_cmd.exists(cde) and (cde not in self.etat.cloturees or self.voir_cloturees.get()):
+            self.filtre_be.set("Toutes les commandes")
+            self.refresh_dashboard()
+        if self.tree_be_cmd.exists(cde):
+            self.tree_be_cmd.selection_set(cde)
+            self.tree_be_cmd.see(cde)
 
     def add_of_dialog(self):
         selected = self.tree_be_cmd.selection()
@@ -197,6 +233,7 @@ class GenerationOFMixin:
         if dialog.result:
             journal().info("OF %s créé pour la commande %s", dialog.result, do_piece)
             self.refresh_dashboard()
+            self._garder_commande_visible(do_piece)
             self.on_be_order_select()
             if self.tree_be_of.exists(dialog.result):
                 self.tree_be_of.selection_set(dialog.result)
@@ -243,7 +280,10 @@ class GenerationOFMixin:
         self.btn_cloture.configure(state="normal", text="Rouvrir la commande" if cloturee else "Clôturer la commande")
 
     def _apres_action_of(self, message, id_of=None):
+        selection = self.tree_be_cmd.selection()
         self.refresh_dashboard()
+        if selection:
+            self._garder_commande_visible(selection[0])
         self.on_be_order_select()
         if id_of and self.tree_be_of.exists(id_of):
             self.tree_be_of.selection_set(id_of)

@@ -138,6 +138,23 @@ def avancement_commande(etat, cde, mon_op, codpost):
     return total_scanne, total_qte, f"{total_scanne / total_qte * 100:.1f}%"
 
 
+def avancement_global_commande(etat, cde):
+    """(pièces terminées, pièces prévues, tag) d'une commande, tous postes confondus (vue Bureau d'étude).
+    Une pièce est terminée quand elle est sortie de la dernière opération de sa gamme."""
+    faites = prevues = 0
+    commencee = False
+    for of in etat.ofs_par_cde.get(cde, []):
+        gamme = etat.gamme(of.id)
+        if not gamme:
+            continue
+        prevues += of.qte
+        faites += min(etat.compter(of.id, gamme[-1][0]), of.qte)
+        commencee = commencee or any(etat.compter(of.id, op) for op, _ in gamme)
+    if prevues and faites >= prevues:
+        return faites, prevues, "terminee"
+    return faites, prevues, "encours" if commencee else "pas_demarre"
+
+
 def plan_rattrapage(etat, of, mon_op, codpost, nombre, child_key=None, enfants=()):
     """Scans à insérer pour un ajout manuel de `nombre` pièces à ce poste : [(poste, quantité)].
 

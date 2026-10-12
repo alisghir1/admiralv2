@@ -316,6 +316,8 @@ class AtelierMixin:
             self.process_scan(qr_text)
 
     def process_scan(self, qr_code):
+        if self.est_bureau_etude:
+            return  # pas de scan au Bureau d'étude (l'écran Atelier n'y est pas affiché)
         qr_code = qr_code.strip().upper()
         self.recharger_etat()
         if self.notebook.get() != self.NOM_ONGLET_ATELIER:
