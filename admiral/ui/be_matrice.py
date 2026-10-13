@@ -110,7 +110,8 @@ class MatriceMixin:
         if selection:
             self.tree_matrice.selection_set(selection)
         maj_tags_selection(self.tree_matrice)
-        self.tree_matrice.update_idletasks()
+        # Pas d'update_idletasks() ici : sous Windows, traiter les tâches en attente (fenêtres fermées
+        # juste avant) fait planter Tk. yview_moveto n'en a pas besoin.
         self.tree_matrice.yview_moveto(defilement)
 
     def _donnees_commande(self, etat, cde, operations):
