@@ -162,7 +162,7 @@ class MigrationQuatre(unittest.TestCase):
         conn = schema.ouvrir(":memory:")
         self.assertTrue({"Statut", "DateBesoin", "Priorite"} <= schema._colonnes(conn, "CdeDetail"))
         self.assertTrue({"Annule", "DateAnnulation"} <= schema._colonnes(conn, "Scans"))
-        self.assertEqual(schema.version(conn), 4)
+        self.assertEqual(schema.version(conn), schema.VERSION_SCHEMA)
 
 
 if __name__ == "__main__":

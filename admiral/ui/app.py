@@ -34,6 +34,20 @@ class Onglets(ctk.CTkTabview):
         super()._set_grid_current_tab()
         self._tab_dict[self._current_name].grid_configure(pady=(self.ESPACE_SOUS_BARRE, 0))
 
+    def set(self, name):
+        super().set(name)
+        # CustomTkinter retire les anciens onglets 100 ms plus tard : on force ensuite le redessin,
+        # sinon des morceaux de l'onglet quitté peuvent rester affichés (macOS).
+        self.after(160, self._redessiner)
+
+    def _redessiner(self):
+        try:
+            self.update_idletasks()
+            self._tab_dict[self._current_name].tkraise()
+            self.winfo_toplevel().update_idletasks()
+        except tk.TclError:
+            pass
+
 
 class SotraglaceApp(AtelierMixin, SyntheseMixin, GenerationOFMixin, MatriceMixin, ChargeMixin, AdministrationMixin):
     """Application. Les écrans sont des mixins qui partagent :

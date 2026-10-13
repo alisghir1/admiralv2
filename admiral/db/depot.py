@@ -4,6 +4,16 @@ L'interface ne manipule jamais la connexion directement. Pour passer plus tard �
 base centrale (serveur), seule cette classe sera à remplacer.
 """
 from ..domain.etat import OF, EtatAtelier, TOUS_SCANS
+from .schema import cle_ligne
+
+
+class LigneDejaAffectee(ValueError):
+    """Une ligne de commande Sage est déjà dans un autre OF actif."""
+
+    def __init__(self, deja):
+        self.deja = deja   # {clé de ligne: OF qui la détient}
+        detail = ", ".join(f"ligne {cle.rsplit('-', 1)[-1]} → {id_of}" for cle, id_of in sorted(deja.items()))
+        super().__init__(f"Ligne(s) déjà dans un OF : {detail}.")
 
 
 class Depot:
@@ -63,8 +73,11 @@ class Depot:
 
     def creer_of(self, cde, ref_prod, design, observ, qte, lignes_sage, etapes, longueur=None, largeur=None, epaisseur="",
                  date_besoin=None, priorite=0):
-        """Crée un OF et sa gamme. etapes : [(CodeOp, Poste_Assigne ou None)]. Retourne l'ID créé."""
+        """Crée un OF et sa gamme. etapes : [(CodeOp, Poste_Assigne ou None)]. Retourne l'ID créé.
+        Lève LigneDejaAffectee si une des lignes Sage appartient déjà à un OF actif (rien n'est créé)."""
+        cles = self._cles(cde, lignes_sage)
         with self.conn:
+            self._verifier_lignes_libres(cles)
             # Tri numérique : OF-10000 doit passer après OF-9999
             dernier = self.conn.execute(
                 "SELECT MAX(CAST(SUBSTR(ID_OF, 4) AS INTEGER)) FROM CdeDetail WHERE ID_OF LIKE 'OF-%'").fetchone()[0]
@@ -76,7 +89,30 @@ class Depot:
             self.conn.executemany(
                 "INSERT INTO OF_Gammes (ID_OF, Ordre, CodeOp, Poste_Assigne) VALUES (?, ?, ?, ?)",
                 [(id_of, ordre, code_op, poste) for ordre, (code_op, poste) in enumerate(etapes, start=1)])
+            self.conn.executemany("INSERT INTO OF_LignesSage (CleLigne, ID_OF) VALUES (?, ?)", [(c, id_of) for c in cles])
         return id_of
+
+    # --- Lignes Sage des OF (une ligne = un seul OF actif) ---
+
+    @staticmethod
+    def _cles(cde, lignes_sage):
+        return list(dict.fromkeys(cle_ligne(cde, c) for c in (lignes_sage or "").split(",") if c.strip()))
+
+    def _verifier_lignes_libres(self, cles, sauf_of=None):
+        deja = {}
+        for cle in cles:
+            row = self.conn.execute("SELECT ID_OF FROM OF_LignesSage WHERE CleLigne = ?", (cle,)).fetchone()
+            if row and row[0] != sauf_of:
+                deja[cle] = row[0]
+        if deja:
+            raise LigneDejaAffectee(deja)
+
+    def lignes_affectees(self, cde):
+        """{clé de ligne « CDE-DL_Ligne »: OF actif qui la contient} pour une commande."""
+        prefixe = f"{cde}-"
+        return dict(self.conn.execute(
+            "SELECT CleLigne, ID_OF FROM OF_LignesSage WHERE substr(CleLigne, 1, ?) = ?",
+            (len(prefixe), prefixe)).fetchall())
 
     # --- Scans ---
 
@@ -147,7 +183,17 @@ class Depot:
                                   [(poste, id_of, ordre) for ordre, poste in postes_par_ordre.items()])
 
     def changer_statut_of(self, id_of, statut):
+        """Annuler libère les lignes Sage de l'OF ; réactiver les reprend, et échoue (LigneDejaAffectee)
+        si un autre OF les a prises entre-temps."""
         with self.conn:
+            if statut == "annule":
+                self.conn.execute("DELETE FROM OF_LignesSage WHERE ID_OF = ?", (id_of,))
+            else:
+                cde, lignes = self.conn.execute("SELECT CDE, LignesSage FROM CdeDetail WHERE ID_OF = ?", (id_of,)).fetchone()
+                cles = self._cles(cde, lignes)
+                self._verifier_lignes_libres(cles, sauf_of=id_of)
+                self.conn.executemany("INSERT OR IGNORE INTO OF_LignesSage (CleLigne, ID_OF) VALUES (?, ?)",
+                                      [(c, id_of) for c in cles])
             self.conn.execute("UPDATE CdeDetail SET Statut = ? WHERE ID_OF = ?", (statut, id_of))
 
     def supprimer_of(self, id_of):
@@ -156,6 +202,7 @@ class Depot:
             raise ValueError(f"{id_of} a déjà des scans : annulez-le plutôt que de le supprimer.")
         with self.conn:
             self.conn.execute("DELETE FROM OF_Gammes WHERE ID_OF = ?", (id_of,))
+            self.conn.execute("DELETE FROM OF_LignesSage WHERE ID_OF = ?", (id_of,))
             self.conn.execute("DELETE FROM CdeDetail WHERE ID_OF = ?", (id_of,))
 
     # --- Commandes ---

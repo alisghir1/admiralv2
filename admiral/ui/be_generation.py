@@ -8,6 +8,7 @@ import customtkinter as ctk
 from .. import theme as T
 from ..domain import progression, sage
 from ..domain.synthese import format_date
+from ..db.depot import LigneDejaAffectee
 from ..journal import journal
 from .composants import bouton, carte, champ, tableau, texte, titre
 from .dialogs import AddOfDialog, HistoriqueDialog, ModifierOfDialog
@@ -83,11 +84,16 @@ class GenerationOFMixin:
         bouton(entete, "Créer un OF", self.add_of_dialog, style="primaire", icone=get_icon("plus")).pack(side=tk.RIGHT)
         self.lbl_be_message = ctk.CTkLabel(entete, text="", font=T.police(T.TAILLE_CORPS, gras=True), text_color=T.SUCCES_VIF)
         self.lbl_be_message.pack(side=tk.RIGHT, padx=T.ESPACE_M)
-        texte(bloc_sage, "Sélectionnez une ou plusieurs lignes (Ctrl/Cmd + clic), puis « Créer un OF ».").pack(
-            fill=tk.X, padx=T.ESPACE_L, pady=(0, T.ESPACE_S))
+        texte(bloc_sage, "Sélectionnez une ou plusieurs lignes libres (Ctrl/Cmd + clic), puis « Créer un OF ». "
+                         "Une ligne ne peut être que dans un seul OF.").pack(fill=tk.X, padx=T.ESPACE_L, pady=(0, T.ESPACE_S))
         cadre, self.tree_be_sage = tableau(bloc_sage, [
             ("ligne", "Ligne", 70, "center"), ("ref", "Référence", 140, "w"), ("designation", "Désignation", 280, "w"),
-            ("dim", "Dimensions", 120, "center"), ("qte", "Qté", 60, "center")], selection="extended")
+            ("dim", "Dimensions", 120, "center"), ("qte", "Qté", 60, "center"), ("of", "OF", 110, "center")],
+            selection="extended")
+        # Ligne déjà dans un OF : texte atténué, et l'OF affiché dans la dernière colonne
+        self.tree_be_sage.tag_configure("affectee", foreground=T.TEXTE_ATTENUE)
+        self.tree_be_sage.tag_configure("affectee_sel", **{k: self.tree_be_sage.tag_configure("child_sel", k)
+                                                            for k in ("background", "foreground", "font")})
         cadre.pack(fill=tk.BOTH, expand=True, padx=T.ESPACE_L, pady=(0, T.ESPACE_L))
         self.tree_be_sage.bind("<<TreeviewSelect>>", lambda e: maj_tags_selection(self.tree_be_sage))
 
@@ -162,10 +168,13 @@ class GenerationOFMixin:
         for item in self.tree_be_sage.get_children():
             self.tree_be_sage.delete(item)
         lignes_cmd = sorted(self.sage.lignes_commande(do_piece), key=lambda x: x[1].get('DL_Ligne', ''))
+        self.lignes_affectees_be = self.depot.lignes_affectees(do_piece)
         for key, ligne in lignes_cmd:
-            self.tree_be_sage.insert("", "end", iid=key, values=(ligne.get("DL_Ligne", ""), ligne.get("AR_Ref", ""),
-                                                                 ligne.get("DL_Design", ""), sage.dimensions(ligne),
-                                                                 sage.lire_qte(ligne.get("DL_Qte", "1"))))
+            id_of = self.lignes_affectees_be.get(key)
+            self.tree_be_sage.insert("", "end", iid=key, tags=("affectee",) if id_of else (),
+                                     values=(ligne.get("DL_Ligne", ""), ligne.get("AR_Ref", ""),
+                                             ligne.get("DL_Design", ""), sage.dimensions(ligne),
+                                             sage.lire_qte(ligne.get("DL_Qte", "1")), f"✓ {id_of}" if id_of else ""))
 
         # 2. OF existants de la commande, avec leurs lignes Sage en enfants
         for item in self.tree_be_of.get_children():
@@ -221,6 +230,13 @@ class GenerationOFMixin:
 
         # Lignes Sage sélectionnées : désignation et dimensions de la première, somme des quantités
         selected_sage = self.tree_be_sage.selection()
+        deja = {cle: self.lignes_affectees_be[cle] for cle in selected_sage if cle in getattr(self, "lignes_affectees_be", {})}
+        if deja:
+            detail = "\n".join(f"• ligne {self.sage.lignes.get(cle, {}).get('DL_Ligne', cle)} : déjà dans {id_of}"
+                               for cle, id_of in deja.items())
+            messagebox.showwarning("Créer un OF", "Une ligne de commande ne peut être que dans un seul OF.\n\n"
+                                   f"{detail}\n\nDésélectionnez ces lignes, ou annulez l'OF qui les contient pour les libérer.")
+            return
         if selected_sage:
             premiere = self.sage.lignes.get(selected_sage[0], {})
             valeurs.update(design=premiere.get("DL_Design", ""), longueur=premiere.get("LONG", ""), largeur=premiere.get("LARG", ""),
@@ -314,12 +330,18 @@ class GenerationOFMixin:
         if not of:
             return
         if of.annule:
-            self.depot.changer_statut_of(of.id, "actif")
+            try:
+                self.depot.changer_statut_of(of.id, "actif")
+            except LigneDejaAffectee as exc:
+                messagebox.showwarning("Réactiver l'OF", f"{of.id} ne peut pas être réactivé.\n\n{exc}\n\n"
+                                       "Ces lignes ont été reprises par un autre OF depuis l'annulation.")
+                return
             journal().info("OF %s réactivé", of.id)
             self._apres_action_of(f"{of.id} réactivé", of.id)
             return
         if not messagebox.askyesno("Annuler l'OF", f"Annuler {of.id} ?\n\nIl disparaît de l'atelier et ne peut plus être "
-                                                   "scanné. Ses scans restent dans l'historique ; vous pourrez le réactiver."):
+                                                   "scanné. Ses lignes de commande redeviennent libres pour un autre OF. "
+                                                   "Ses scans restent dans l'historique ; vous pourrez le réactiver."):
             return
         self.depot.changer_statut_of(of.id, "annule")
         journal().info("OF %s annulé", of.id)

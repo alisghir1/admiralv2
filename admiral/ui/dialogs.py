@@ -7,9 +7,11 @@ import customtkinter as ctk
 
 from .. import theme as T
 from ..config import CODE_BUREAU_ETUDE_DEFAUT, POSTE_BUREAU_ETUDE
+from ..db.depot import LigneDejaAffectee
 from .composants import bouton, carte, champ, tableau, texte, titre
 from .widgets import FenetreDialogue, capturer_focus, centrer_fenetre, maj_tags_selection
 
+HAUTEUR_LISTE_PRODUITS = 4   # lignes visibles au minimum dans la liste des produits (elle prend la place libre)
 POSTE_LIBRE = "Libre (n'importe quel poste)"
 
 
@@ -130,7 +132,7 @@ def afficher_date(iso):
 class _FormulaireOF(FenetreDialogue):
     """Squelette commun à la création et à la modification d'un OF : en-tête, champs, erreurs, boutons."""
 
-    def __init__(self, parent, titre_fenetre, titre_formulaire, sous_titre, libelle_valider, largeur=1160, hauteur=690):
+    def __init__(self, parent, titre_fenetre, titre_formulaire, sous_titre, libelle_valider, largeur=1160, hauteur=730):
         super().__init__(parent)
         self.title(titre_fenetre)
         centrer_fenetre(self, largeur, hauteur)
@@ -142,22 +144,24 @@ class _FormulaireOF(FenetreDialogue):
         titre(cadre, titre_formulaire, taille=T.TAILLE_TITRE).pack(fill=tk.X, padx=T.ESPACE_XL, pady=(T.ESPACE_L, 0))
         texte(cadre, sous_titre).pack(fill=tk.X, padx=T.ESPACE_XL, pady=(0, T.ESPACE_M))
 
-        # Pied de fenêtre d'abord (côté bas), pour qu'il reste visible quelle que soit la hauteur
-        pied = ctk.CTkFrame(cadre, fg_color="transparent")
-        pied.pack(side=tk.BOTTOM, fill=tk.X, padx=T.ESPACE_XL, pady=(T.ESPACE_S, T.ESPACE_L))
-        bouton(pied, libelle_valider, self.save, style="succes", width=170).pack(side=tk.RIGHT)
-        bouton(pied, "Annuler", self.destroy, style="secondaire", width=120).pack(side=tk.RIGHT, padx=T.ESPACE_S)
-        self.lbl_erreur = ctk.CTkLabel(cadre, text="", font=T.police(T.TAILLE_CORPS, gras=True), text_color=T.ERREUR_TEXTE, anchor="w")
-        self.lbl_erreur.pack(side=tk.BOTTOM, fill=tk.X, padx=T.ESPACE_XL)
-
-        # Deux colonnes : informations de l'OF à gauche, gamme à droite (fenêtre moins haute)
+        # Deux colonnes : informations de l'OF à gauche, gamme à droite
         corps = ctk.CTkFrame(cadre, fg_color="transparent")
-        corps.pack(fill=tk.BOTH, expand=True, padx=T.ESPACE_XL)
+        corps.pack(fill=tk.BOTH, expand=True, padx=T.ESPACE_XL, pady=(0, T.ESPACE_L))
         self.form = ctk.CTkFrame(corps, fg_color="transparent")
         self.form.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         self.form.columnconfigure(1, weight=1)
         self.colonne_gamme = ctk.CTkFrame(corps, fg_color="transparent", width=420)
         self.colonne_gamme.pack(side=tk.LEFT, fill=tk.BOTH, padx=(T.ESPACE_XL, 0))
+
+        # Boutons en bas de la colonne de droite, à la hauteur de la dernière ligne du formulaire.
+        # Posés avant la gamme (côté bas) : ils restent visibles, la gamme prend la place restante.
+        pied = ctk.CTkFrame(self.colonne_gamme, fg_color="transparent")
+        pied.pack(side=tk.BOTTOM, fill=tk.X, pady=(T.ESPACE_S, 0))
+        bouton(pied, libelle_valider, self.save, style="succes", width=170).pack(side=tk.RIGHT)
+        bouton(pied, "Annuler", self.destroy, style="secondaire", width=120).pack(side=tk.RIGHT, padx=T.ESPACE_S)
+        self.lbl_erreur = ctk.CTkLabel(self.colonne_gamme, text="", font=T.police(T.TAILLE_CORPS, gras=True),
+                                       text_color=T.ERREUR_TEXTE, anchor="w", justify="left", wraplength=400)
+        self.lbl_erreur.pack(side=tk.BOTTOM, fill=tk.X)
 
         self.transient(parent)
         self.bind("<Escape>", lambda e: self.destroy())
@@ -292,12 +296,13 @@ class AddOfDialog(_FormulaireOF):
         # Produit : filtre + liste
         self.etiquette(0, "Produit")
         bloc_produit = ctk.CTkFrame(self.form, fg_color="transparent")
-        bloc_produit.grid(row=0, column=1, sticky="ew", pady=(T.ESPACE_S, 0))
+        bloc_produit.grid(row=0, column=1, sticky="nsew", pady=(T.ESPACE_S, 0))
+        self.form.rowconfigure(0, weight=1)   # la liste des produits occupe la hauteur disponible
         self.filtre_produit = champ(bloc_produit, "Filtrer par référence ou désignation")
         self.filtre_produit.pack(fill=tk.X)
         self.filtre_produit.bind("<KeyRelease>", lambda e: self._remplir_produits())
-        cadre_liste, self.liste_produits = tableau(bloc_produit, [("produit", "Produit", 400, "w")], hauteur=3)
-        cadre_liste.pack(fill=tk.X, pady=(T.ESPACE_XS, 0))
+        cadre_liste, self.liste_produits = tableau(bloc_produit, [("produit", "Produit", 400, "w")], hauteur=HAUTEUR_LISTE_PRODUITS)
+        cadre_liste.pack(fill=tk.BOTH, expand=True, pady=(T.ESPACE_XS, 0))
         self.liste_produits.bind("<<TreeviewSelect>>", self.on_prod_select)
         self.produits_map = {ref: des for ref, des in self.depot.lister_produits()}
         self._remplir_produits()
@@ -384,9 +389,13 @@ class AddOfDialog(_FormulaireOF):
         if not etapes:
             self.erreur("Gardez au moins une opération dans la gamme.")
             return
-        self.result = self.depot.creer_of(self.cde, ref_prod, valeurs["design"], valeurs["observ"], valeurs["qte"],
-                                          self.lignes_sage, etapes, valeurs["longueur"], valeurs["largeur"],
-                                          valeurs["epaisseur"], valeurs["date_besoin"], valeurs["priorite"])
+        try:
+            self.result = self.depot.creer_of(self.cde, ref_prod, valeurs["design"], valeurs["observ"], valeurs["qte"],
+                                              self.lignes_sage, etapes, valeurs["longueur"], valeurs["largeur"],
+                                              valeurs["epaisseur"], valeurs["date_besoin"], valeurs["priorite"])
+        except LigneDejaAffectee as exc:   # un autre poste a pris la ligne pendant la saisie
+            self.erreur(str(exc))
+            return
         self.destroy()
 
 

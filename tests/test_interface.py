@@ -100,6 +100,28 @@ class Interface(unittest.TestCase):
         self.assertEqual((of.longueur, of.largeur, of.qte), (1800, 1100, 8))
         self.assertEqual(self.app.etat.gamme("OF-1002"), [("DEC", None), ("FAC", None), ("TRE", None)])
 
+    def test_01_creation_of_ligne_deja_prise(self):
+        # La ligne CC3-1000 est dans OF-1002 (test_01) : elle porte l'indicateur et ne peut pas servir à un 2e OF
+        self.app.refresh_dashboard()
+        self.app.tree_be_cmd.selection_set("CC3")
+        self.app.on_be_order_select()
+        self.assertEqual(self.app.tree_be_sage.item("CC3-1000", "values")[-1], "✓ OF-1002")
+        self.assertEqual(self.app.tree_be_sage.item("CC3-1000", "tags")[0], "affectee")
+        self.app.tree_be_sage.selection_set("CC3-1000")
+        del self.messages[:]
+        self.app.add_of_dialog()
+        self.assertEqual(self.messages, ["showwarning"], "création refusée avant même d'ouvrir la fenêtre")
+        self.assertEqual(len(self.app.recharger_etat().ofs_par_cde["CC3"]), 1)
+
+        # Même si la fenêtre a été ouverte avant (autre poste), l'enregistrement est refusé avec un message
+        from admiral.ui.dialogs import AddOfDialog
+        dlg = AddOfDialog(self.root, self.app.depot, "CC3", lignes_sage="CC3-1000")
+        dlg.choisir_produit("VITR")
+        dlg.save()
+        self.assertIsNone(dlg.result)
+        self.assertIn("OF-1002", dlg.lbl_erreur.cget("text"))
+        dlg.destroy()
+
     def test_02_creation_of_erreurs_dans_la_fenetre(self):
         from admiral.ui.dialogs import AddOfDialog
         dlg = AddOfDialog(self.root, self.app.depot, "CC3")

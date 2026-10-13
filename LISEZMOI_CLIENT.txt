@@ -25,7 +25,9 @@ Version de validation (données de démonstration)
    Synthèse           Pièces du jour, OF en cours / terminés / en retard, avancement
                       des commandes (matrice commandes x opérations), état des postes.
    Création d'OF      Commandes Sage, lignes de commande, création, modification,
-                      annulation d'OF, clôture de commande.
+                      annulation d'OF, clôture de commande. Une ligne de commande
+                      ne peut être que dans un seul OF : la colonne « OF » indique
+                      celui qui la contient (annuler l'OF libère ses lignes).
    Charge des postes  OF à faire / en cours / terminés par poste.
    Administration     Produits et gammes, opérations, postes, import Excel.
 

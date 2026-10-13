@@ -135,4 +135,6 @@ class ChargeMixin:
                                    progress_color=T.SUCCES_VIF if etat_colonne == "terminee" else T.ALERTE)
         barre.set(min(scans / of.qte, 1) if of.qte else 0)
         barre.pack(fill=tk.X, padx=T.ESPACE_M, pady=(T.ESPACE_XS, T.ESPACE_S))
-        lier_clic(mini, lambda e, id_of=of.id: self.selectionner_of_be(id_of))
+        # Le changement d'onglet masque cette carte : on le fait après la fin du clic, jamais pendant
+        # (sinon le contenu de l'onglet quitté reste dessiné par-dessus le nouvel onglet).
+        lier_clic(mini, lambda e, id_of=of.id: self.root.after(30, self.selectionner_of_be, id_of))
