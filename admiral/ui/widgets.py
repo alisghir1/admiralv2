@@ -51,6 +51,14 @@ def capturer_focus(win, essais=20):
             win.after(50, lambda: capturer_focus(win, essais - 1))
 
 
+def apres_inactivite(root, fonction):
+    """root.after_idle sans erreur quand la fenêtre est en cours de fermeture (redimensionnements tardifs)."""
+    try:
+        root.after_idle(fonction)
+    except tk.TclError:
+        pass
+
+
 def maj_tags_selection(tree):
     """Passe les lignes sélectionnées sur la variante "_sel" de leur tag (couleur de sélection par état)."""
     selected_items = tree.selection()

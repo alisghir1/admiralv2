@@ -10,7 +10,7 @@ import customtkinter as ctk
 from .. import theme as T
 from ..domain import progression, sage
 from .composants import MARGE_COLONNE, abreger, carte, polices_tableau, tableau, texte, titre
-from .widgets import maj_tags_selection
+from .widgets import apres_inactivite, maj_tags_selection
 
 LEGENDE = "✓ terminé   ◐ en cours   ○ à faire   — hors gamme"
 RETRAIT_NIVEAU = 20           # décalage d'un niveau de l'arbre (commande > OF > ligne)
@@ -47,7 +47,7 @@ class MatriceMixin:
         self.tree_matrice.bind("<Double-1>", self._ouvrir_depuis_avancement)
         # Largeurs nécessaires au contenu ; la place en plus est répartie entre les colonnes d'opération
         self._largeurs_matrice = {}
-        self.tree_matrice.bind("<Configure>", lambda e: self.root.after_idle(self._ajuster_colonnes_matrice), add="+")
+        self.tree_matrice.bind("<Configure>", lambda e: apres_inactivite(self.root, self._ajuster_colonnes_matrice), add="+")
 
     def refresh_be_matrice(self, etat=None):
         """etat : instantané déjà chargé par l'appelant (la Synthèse), sinon rechargé ici."""
@@ -123,7 +123,10 @@ class MatriceMixin:
         entre les colonnes d'opération (le tableau occupe toute la section, quelle que soit l'écran).
         S'il est plus étroit, les largeurs utiles sont gardées et la barre horizontale apparaît."""
         arbre = self.tree_matrice
-        if not self._largeurs_matrice or not arbre.winfo_exists():
+        try:
+            if not self._largeurs_matrice or not arbre.winfo_exists():
+                return
+        except tk.TclError:   # fenêtre en cours de fermeture
             return
         operations = [c for c in self._largeurs_matrice if c != "#0"]
         surplus = max(0, arbre.winfo_width() - sum(self._largeurs_matrice.values()) - 2)

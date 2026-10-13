@@ -7,7 +7,7 @@ import customtkinter as ctk
 from .. import theme as T
 from ..domain import synthese
 from .composants import MARGE_COLONNE, abreger, bouton, carte, polices_tableau, tableau, texte, titre
-from .widgets import get_icon, maj_tags_selection
+from .widgets import apres_inactivite, get_icon, maj_tags_selection
 
 ACTUALISATION_AUTO_MS = 60_000
 # Colonnes chiffrées de « Par poste » : en-têtes courts, expliqués par la légende
@@ -57,6 +57,9 @@ class SyntheseMixin:
 
         bloc_avancement = ctk.CTkFrame(bas, fg_color="transparent")
         bloc_avancement.grid(row=0, column=0, sticky="nsew", padx=(0, T.ESPACE_S // 2))
+        # La largeur demandée par un tableau ttk est la somme de ses colonnes : comme elles s'élargissent
+        # pour remplir la section, elle ne doit pas remonter (sinon la fenêtre grandit, les colonnes aussi…).
+        bloc_avancement.pack_propagate(False)
         self.build_be_matrice_ui(bloc_avancement)
 
         bloc_postes = carte(bas)
@@ -72,7 +75,7 @@ class SyntheseMixin:
         self.tree_synthese_postes.column("poste", minwidth=LARGEUR_MIN_POSTE)
         self._noms_postes_synthese = {}
         self.tree_synthese_postes.bind("<<TreeviewSelect>>", lambda e: maj_tags_selection(self.tree_synthese_postes))
-        self.tree_synthese_postes.bind("<Configure>", lambda e: self.root.after_idle(self._abreger_noms_postes), add="+")
+        self.tree_synthese_postes.bind("<Configure>", lambda e: apres_inactivite(self.root, self._abreger_noms_postes), add="+")
 
     def refresh_synthese(self):
         etat = self.recharger_etat()
@@ -111,7 +114,10 @@ class SyntheseMixin:
     def _abreger_noms_postes(self):
         """Nom complet du poste s'il tient dans la colonne, sinon abrégé avec « … » (le code reste visible)."""
         arbre = self.tree_synthese_postes
-        if not arbre.winfo_exists():
+        try:
+            if not arbre.winfo_exists():
+                return
+        except tk.TclError:   # fenêtre en cours de fermeture
             return
         police, _ = polices_tableau()
         largeur = arbre.column("poste", "width") - MARGE_COLONNE
