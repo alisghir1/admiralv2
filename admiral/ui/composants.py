@@ -1,5 +1,6 @@
 """Composants visuels réutilisables : cartes, pastilles d'état, boutons, tableaux."""
 import tkinter as tk
+import tkinter.font as tkfont
 from tkinter import ttk
 
 import customtkinter as ctk
@@ -126,6 +127,23 @@ def tableau(parent, colonnes, style="Treeview", hauteur=None, selection="browse"
         tree.column("#0", width=36, stretch=False)
     configurer_tags_etats(tree)
     return cadre, tree
+
+
+MARGE_COLONNE = 20   # marges intérieures d'une cellule ou d'un en-tête de tableau (px)
+
+
+def polices_tableau():
+    """(police des cellules, police des en-têtes) des tableaux, pour mesurer les textes en pixels."""
+    return tkfont.Font(font=T.police(T.TAILLE_CORPS)), tkfont.Font(font=T.police(T.TAILLE_LEGENDE, gras=True))
+
+
+def abreger(contenu, police, largeur):
+    """Raccourcit le texte avec « … » pour qu'il tienne dans `largeur` pixels (Tk le couperait net)."""
+    if police.measure(contenu) <= largeur:
+        return contenu
+    while contenu and police.measure(contenu + "…") > largeur:
+        contenu = contenu[:-1]
+    return contenu.rstrip(" ,·-") + "…"
 
 
 def lier_clic(widget, rappel):

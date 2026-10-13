@@ -153,9 +153,6 @@ class Synthese(unittest.TestCase):
                               {"DEC1": 4}, date(2026, 10, 12))
         self.assertEqual((s.pieces_jour, s.of_a_faire, s.of_en_cours, s.of_termines, s.of_retard), (4, 1, 1, 1, 1))
         self.assertAlmostEqual(s.avancement, 2 / 9)
-        self.assertEqual(len(s.a_surveiller), 1)
-        self.assertEqual(s.a_surveiller[0].etape, "Découpe 2/4")
-        self.assertTrue(s.a_surveiller[0].motif.startswith("En retard"))
         dec1 = next(l for l in s.postes if l.code == "DEC1")
         self.assertEqual((dec1.a_faire, dec1.en_cours, dec1.termines, dec1.reste_operation), (1, 1, 1, 5))
 

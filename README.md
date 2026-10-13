@@ -53,9 +53,9 @@ admiral/
   ui/atelier.py          onglet Atelier : commandes du poste, cartes d'OF, bandeau de scan
   ui/carte_of.py         carte d'un OF (mise à jour sur place)
   ui/be_generation.py    onglet Création d'OF
-  ui/be_matrice.py       onglet Avancement (matrice commandes × opérations)
+  ui/be_matrice.py       avancement des commandes (matrice commandes × opérations), dans la Synthèse
   ui/be_charge.py        onglet Charge des postes (colonnes de cartes)
-  ui/synthese.py         onglet Synthèse (indicateurs, postes, OF à surveiller)
+  ui/synthese.py         onglet Synthèse (indicateurs, avancement des commandes, postes)
   ui/administration.py   onglet Administration (référentiel, import Excel)
   ui/dialogs.py          choix du poste, nouvel OF, modification d'OF, historique des scans
   ui/composants.py       cartes, pastilles d'état, boutons, tableaux

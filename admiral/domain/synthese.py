@@ -17,14 +17,6 @@ class LignePoste:
 
 
 @dataclass
-class OFASurveiller:
-    of: object
-    motif: str             # "En retard (besoin le 10/10)", "Urgent · besoin le 15/10", "Urgent"
-    etape: str             # prochaine étape à faire : "Façonnage 3/7"
-    retard: bool
-
-
-@dataclass
 class Synthese:
     pieces_jour: int = 0
     of_a_faire: int = 0
@@ -33,7 +25,6 @@ class Synthese:
     of_retard: int = 0
     avancement: float = 0.0   # part des pièces sorties de la dernière opération (0 à 1)
     postes: List[LignePoste] = field(default_factory=list)
-    a_surveiller: List[OFASurveiller] = field(default_factory=list)
 
 
 def format_date(iso):
@@ -42,15 +33,6 @@ def format_date(iso):
         return ""
     annee, mois, jour = iso.split("-")
     return f"{jour}/{mois}" if int(annee) == date.today().year else f"{jour}/{mois}/{annee}"
-
-
-def prochaine_etape(etat, of, libelles):
-    """Première opération de la gamme pas encore complète, avec son compteur ; "Terminé" sinon."""
-    for op, _ in etat.gamme(of.id):
-        n = etat.compter(of.id, op)
-        if n < of.qte:
-            return f"{libelles.get(op, op)} {n}/{of.qte}"
-    return "Terminé"
 
 
 def calculer(etat, postes, libelles, scans_jour, aujourd_hui):
@@ -71,18 +53,8 @@ def calculer(etat, postes, libelles, scans_jour, aujourd_hui):
             faites += min(etat.compter(of.id, gamme[-1][0]), of.qte)
             prevues += of.qte
 
-        retard = etat.en_retard(of, aujourd_hui)
-        s.of_retard += retard
-        if (retard or of.urgent) and not etat.termine(of):
-            if retard:
-                motif = f"En retard (besoin le {format_date(of.date_besoin)})"
-            elif of.date_besoin:
-                motif = f"Urgent · besoin le {format_date(of.date_besoin)}"
-            else:
-                motif = "Urgent"
-            s.a_surveiller.append(OFASurveiller(of, motif, prochaine_etape(etat, of, libelles), retard))
+        s.of_retard += etat.en_retard(of, aujourd_hui)
     s.avancement = faites / prevues if prevues else 0.0
-    s.a_surveiller.sort(key=lambda x: (not x.retard, x.of.date_besoin or "9999", not x.of.urgent, x.of.id))
 
     for code, designation, ref_op in postes:
         ligne = LignePoste(code, designation, libelles.get(ref_op, ref_op or "—"), scans_jour.get(code, 0), 0, 0, 0, 0)

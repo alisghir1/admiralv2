@@ -1,4 +1,4 @@
-"""Onglet Synthèse : indicateurs du jour, charge par poste, OF à surveiller."""
+"""Onglet Synthèse : indicateurs du jour, avancement des commandes, état des postes."""
 import tkinter as tk
 from datetime import date, datetime
 
@@ -6,10 +6,15 @@ import customtkinter as ctk
 
 from .. import theme as T
 from ..domain import synthese
-from .composants import bouton, carte, tableau, texte, titre
+from .composants import MARGE_COLONNE, abreger, bouton, carte, polices_tableau, tableau, texte, titre
 from .widgets import get_icon, maj_tags_selection
 
 ACTUALISATION_AUTO_MS = 60_000
+# Colonnes chiffrées de « Par poste » : en-têtes courts, expliqués par la légende
+COLONNES_POSTES = [("jour", "Auj."), ("a_faire", "À faire"), ("en_cours", "En cours"),
+                   ("termines", "Finis"), ("reste", "Reste")]
+LEGENDE_POSTES = "Auj. : pièces du jour · Reste : pièces à faire\nÀ faire, En cours, Finis : nombre d'OF"
+LARGEUR_MIN_POSTE = 80
 
 
 class SyntheseMixin:
@@ -43,33 +48,31 @@ class SyntheseMixin:
         self.barre_avancement.set(0)
         self.barre_avancement.pack(fill=tk.X, padx=T.ESPACE_L, pady=(0, T.ESPACE_L))
 
+        # Dessous : avancement des commandes (60 %) et état des postes (40 %)
         bas = ctk.CTkFrame(parent, fg_color="transparent")
         bas.pack(expand=True, fill=tk.BOTH)
-        bas.columnconfigure(0, weight=1, uniform="synthese")
-        bas.columnconfigure(1, weight=1, uniform="synthese")
+        bas.columnconfigure(0, weight=60, uniform="synthese")
+        bas.columnconfigure(1, weight=40, uniform="synthese")
         bas.rowconfigure(0, weight=1)
 
-        bloc_postes = carte(bas)
-        bloc_postes.grid(row=0, column=0, sticky="nsew", padx=(0, T.ESPACE_S // 2))
-        titre(bloc_postes, "Par poste", taille=T.TAILLE_SOUS_TITRE).pack(fill=tk.X, padx=T.ESPACE_L, pady=(T.ESPACE_L, T.ESPACE_S))
-        cadre, self.tree_synthese_postes = tableau(bloc_postes, [
-            ("poste", "Poste", 160, "w"), ("operation", "Opération", 110, "w"), ("jour", "Aujourd'hui", 90, "center"),
-            ("a_faire", "À faire", 70, "center"), ("en_cours", "En cours", 80, "center"), ("termines", "Terminés", 80, "center"),
-            ("reste", "Pièces restantes", 120, "center")])
-        cadre.pack(fill=tk.BOTH, expand=True, padx=T.ESPACE_L, pady=(0, T.ESPACE_L))
-        self.tree_synthese_postes.bind("<<TreeviewSelect>>", lambda e: maj_tags_selection(self.tree_synthese_postes))
+        bloc_avancement = ctk.CTkFrame(bas, fg_color="transparent")
+        bloc_avancement.grid(row=0, column=0, sticky="nsew", padx=(0, T.ESPACE_S // 2))
+        self.build_be_matrice_ui(bloc_avancement)
 
-        bloc_alertes = carte(bas)
-        bloc_alertes.grid(row=0, column=1, sticky="nsew", padx=(T.ESPACE_S // 2, 0))
-        titre(bloc_alertes, "OF à surveiller", taille=T.TAILLE_SOUS_TITRE).pack(fill=tk.X, padx=T.ESPACE_L, pady=(T.ESPACE_L, 0))
-        texte(bloc_alertes, "En retard ou urgents, pas encore terminés. Double-clic : ouvrir l'OF.").pack(
+        bloc_postes = carte(bas)
+        bloc_postes.grid(row=0, column=1, sticky="nsew", padx=(T.ESPACE_S // 2, 0))
+        titre(bloc_postes, "Par poste", taille=T.TAILLE_SOUS_TITRE).pack(fill=tk.X, padx=T.ESPACE_L, pady=(T.ESPACE_L, 0))
+        texte(bloc_postes, LEGENDE_POSTES, taille=T.TAILLE_LEGENDE, justify="left").pack(
             fill=tk.X, padx=T.ESPACE_L, pady=(0, T.ESPACE_S))
-        cadre, self.tree_surveiller = tableau(bloc_alertes, [
-            ("of", "OF", 90, "center"), ("cde", "Commande", 100, "w"), ("design", "Désignation", 170, "w"),
-            ("motif", "Motif", 190, "w"), ("etape", "Prochaine étape", 140, "w")])
+
+        police, police_entete = polices_tableau()
+        cadre, self.tree_synthese_postes = tableau(bloc_postes, [("poste", "Poste", 160, "w")] + [
+            (ident, libelle, police_entete.measure(libelle) + MARGE_COLONNE, "center") for ident, libelle in COLONNES_POSTES])
         cadre.pack(fill=tk.BOTH, expand=True, padx=T.ESPACE_L, pady=(0, T.ESPACE_L))
-        self.tree_surveiller.bind("<<TreeviewSelect>>", lambda e: maj_tags_selection(self.tree_surveiller))
-        self.tree_surveiller.bind("<Double-1>", self._ouvrir_of_surveille)
+        self.tree_synthese_postes.column("poste", minwidth=LARGEUR_MIN_POSTE)
+        self._noms_postes_synthese = {}
+        self.tree_synthese_postes.bind("<<TreeviewSelect>>", lambda e: maj_tags_selection(self.tree_synthese_postes))
+        self.tree_synthese_postes.bind("<Configure>", lambda e: self.root.after_idle(self._abreger_noms_postes), add="+")
 
     def refresh_synthese(self):
         etat = self.recharger_etat()
@@ -83,32 +86,40 @@ class SyntheseMixin:
         self.barre_avancement.set(s.avancement)
         self.lbl_synthese_maj.configure(text=f"Mis à jour à {datetime.now():%H:%M}")
 
-        for tree in (self.tree_synthese_postes, self.tree_surveiller):
-            for item in tree.get_children():
-                tree.delete(item)
+        selection = self.tree_synthese_postes.selection()
+        for item in self.tree_synthese_postes.get_children():
+            self.tree_synthese_postes.delete(item)
+        self._noms_postes_synthese = {}
         for ligne in s.postes:
             tag = "encours" if ligne.en_cours else ("pas_demarre" if ligne.a_faire else "terminee")
+            self._noms_postes_synthese[ligne.code] = f"{ligne.code} · {ligne.designation}"
             self.tree_synthese_postes.insert("", "end", iid=ligne.code, tags=(tag,), values=(
-                f"{ligne.code} · {ligne.designation}", ligne.operation, ligne.pieces_jour, ligne.a_faire,
+                self._noms_postes_synthese[ligne.code], ligne.pieces_jour, ligne.a_faire,
                 ligne.en_cours, ligne.termines, ligne.reste_operation))
-        for alerte in s.a_surveiller:
-            of = alerte.of
-            self.tree_surveiller.insert("", "end", iid=of.id, tags=("bloque" if alerte.retard else "encours",),
-                                        values=(of.id, of.cde, of.design, alerte.motif, alerte.etape))
-        if not s.a_surveiller:
-            self.tree_surveiller.insert("", "end", values=("", "", "Rien à signaler", "", ""), tags=("terminee",))
+        selection = [i for i in selection if self.tree_synthese_postes.exists(i)]
+        if selection:
+            self.tree_synthese_postes.selection_set(selection)
+        maj_tags_selection(self.tree_synthese_postes)
+        self._abreger_noms_postes()
+        self.refresh_be_matrice(etat)
 
         # Actualisation automatique tant que l'onglet est affiché
         if self._timer_synthese is not None:
             self.root.after_cancel(self._timer_synthese)
         self._timer_synthese = self.root.after(ACTUALISATION_AUTO_MS, self._actualisation_auto_synthese)
 
+    def _abreger_noms_postes(self):
+        """Nom complet du poste s'il tient dans la colonne, sinon abrégé avec « … » (le code reste visible)."""
+        arbre = self.tree_synthese_postes
+        if not arbre.winfo_exists():
+            return
+        police, _ = polices_tableau()
+        largeur = arbre.column("poste", "width") - MARGE_COLONNE
+        for code, nom in self._noms_postes_synthese.items():
+            if arbre.exists(code):
+                arbre.set(code, "poste", abreger(nom, police, largeur) if police.measure(code) <= largeur else code)
+
     def _actualisation_auto_synthese(self):
         self._timer_synthese = None
         if self.notebook.get() == self.NOM_ONGLET_SYNTHESE:
             self.refresh_synthese()
-
-    def _ouvrir_of_surveille(self, event=None):
-        selection = self.tree_surveiller.selection()
-        if selection and selection[0] in self.etat.ofs:
-            self.selectionner_of_be(selection[0])

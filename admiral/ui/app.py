@@ -45,7 +45,6 @@ class SotraglaceApp(AtelierMixin, SyntheseMixin, GenerationOFMixin, MatriceMixin
     NOM_ONGLET_ATELIER = "Atelier"
     NOM_ONGLET_SYNTHESE = "Synthèse"
     NOM_ONGLET_GENERATION = "Création d'OF"
-    NOM_ONGLET_MATRICE = "Avancement"
     NOM_ONGLET_CHARGE = "Charge des postes"
     NOM_ONGLET_ADMIN = "Administration"
 
@@ -239,14 +238,12 @@ class SotraglaceApp(AtelierMixin, SyntheseMixin, GenerationOFMixin, MatriceMixin
         self.tab_atelier = ctk.CTkFrame(self.root, fg_color=T.FOND, corner_radius=0)
         self.tab_synthese = self.notebook.add(self.NOM_ONGLET_SYNTHESE)
         self.tab_be_gen = self.notebook.add(self.NOM_ONGLET_GENERATION)
-        self.tab_be_matrice = self.notebook.add(self.NOM_ONGLET_MATRICE)
         self.tab_be_charge = self.notebook.add(self.NOM_ONGLET_CHARGE)
         self.tab_admin = self.notebook.add(self.NOM_ONGLET_ADMIN)
 
         self.build_atelier_ui(self.tab_atelier)
         self.build_synthese_ui()
         self.build_be_gen_ui()
-        self.build_be_matrice_ui()
         self.build_be_charge_ui()
         self.build_admin_ui()
 
@@ -277,9 +274,7 @@ class SotraglaceApp(AtelierMixin, SyntheseMixin, GenerationOFMixin, MatriceMixin
 
     def on_main_tab_changed(self, event=None):
         onglet = self.notebook.get()
-        if onglet == self.NOM_ONGLET_MATRICE:
-            self.refresh_be_matrice()
-        elif onglet == self.NOM_ONGLET_CHARGE:
+        if onglet == self.NOM_ONGLET_CHARGE:
             self.refresh_be_charge()
         elif onglet == self.NOM_ONGLET_GENERATION:
             self.refresh_dashboard()

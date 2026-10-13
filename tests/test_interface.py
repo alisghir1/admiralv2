@@ -323,10 +323,39 @@ class Interface(unittest.TestCase):
         s = self.app.derniere_synthese
         self.assertGreater(s.pieces_jour, 0)
         self.assertEqual(self.app.tuiles["pieces_jour"].cget("text"), str(s.pieces_jour))
-        self.assertIn("OF-1002", self.app.tree_surveiller.get_children(), "OF urgent en retard à surveiller")
         self.assertEqual(len(self.app.tree_synthese_postes.get_children()), 5)
-        self.app.tree_surveiller.selection_set("OF-1002")
-        self.app._ouvrir_of_surveille()
+
+        # Avancement des commandes, dans la Synthèse : commandes en cours d'abord, terminées à la fin
+        from admiral.domain.progression import ORDRE_ETATS
+        arbre = self.app.tree_matrice
+        rangs = [ORDRE_ETATS[arbre.item(i, "tags")[0]] for i in arbre.get_children()]
+        self.assertEqual(rangs, sorted(rangs), "tri : en cours, à faire, terminées")
+        self.assertTrue(arbre.exists("OF:OF-1002"), "OF rattaché à sa commande")
+
+        # Ce qui est déplié, sélectionné et défilé survit à l'actualisation (automatique chaque minute)
+        cde = arbre.parent("OF:OF-1002")
+        arbre.item(cde, open=True)
+        arbre.item("OF:OF-1002", open=True)
+        arbre.selection_set("OF:OF-1002")
+        self.app.refresh_synthese()
+        self.assertTrue(arbre.item(cde, "open"))
+        self.assertTrue(arbre.item("OF:OF-1002", "open"))
+        self.assertEqual(arbre.selection(), ("OF:OF-1002",))
+        autres = [i for i in arbre.get_children() if i != cde]
+        self.assertTrue(autres and not any(arbre.item(i, "open") for i in autres), "les autres restent repliées")
+
+        # Colonnes compactes mais en-têtes lisibles ; noms de poste abrégés avec « … » si la place manque
+        from admiral.ui.composants import MARGE_COLONNE, abreger, polices_tableau
+        police, police_entete = polices_tableau()
+        for ref in arbre["columns"]:
+            self.assertGreaterEqual(arbre.column(ref, "width"), police_entete.measure(arbre.heading(ref, "text")) + MARGE_COLONNE)
+        self.assertEqual(abreger("DEC1 · Découpe", police, 1000), "DEC1 · Découpe")
+        court = abreger("DEC1 · Découpe Numérique SEKTOR", police, police.measure("DEC1 · Découpe"))
+        self.assertTrue(court.startswith("DEC1") and court.endswith("…"))
+        self.assertLessEqual(police.measure(court), police.measure("DEC1 · Découpe"))
+
+        # Double-clic sur un OF : ouverture dans Création d'OF
+        self.app._ouvrir_depuis_avancement()
         self.assertEqual(self.app.notebook.get(), self.app.NOM_ONGLET_GENERATION)
 
     def test_21_administration(self):
@@ -412,8 +441,7 @@ class Interface(unittest.TestCase):
         self.passer_en(POSTE_BUREAU_ETUDE)
         try:
             onglets = list(self.app.notebook._segmented_button.cget("values"))
-            self.assertEqual(onglets, [self.app.NOM_ONGLET_SYNTHESE, self.app.NOM_ONGLET_GENERATION, self.app.NOM_ONGLET_MATRICE,
-                                       self.app.NOM_ONGLET_CHARGE, self.app.NOM_ONGLET_ADMIN])
+            self.assertEqual(onglets, [self.app.NOM_ONGLET_SYNTHESE, self.app.NOM_ONGLET_GENERATION, self.app.NOM_ONGLET_CHARGE, self.app.NOM_ONGLET_ADMIN])
             self.assertEqual(self.app.notebook.winfo_manager(), "pack", "onglets affichés")
             self.assertEqual(self.app.tab_atelier.winfo_manager(), "", "écran Atelier masqué")
             self.assertEqual(self.app.lbl_title.cget("text").strip(), "Bureau d'étude")

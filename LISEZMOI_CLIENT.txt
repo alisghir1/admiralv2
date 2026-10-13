@@ -22,10 +22,10 @@ Version de validation (données de démonstration)
                       « Simuler un scan » remplace la douchette : cliquez d'abord une carte.
                       Avec une douchette, scannez un code OF (ex. OF-1000) ou commande
                       (ex. CMD-CC240001).
-   Synthèse           Pièces du jour, OF en cours / terminés / en retard, OF à surveiller.
+   Synthèse           Pièces du jour, OF en cours / terminés / en retard, avancement
+                      des commandes (matrice commandes x opérations), état des postes.
    Création d'OF      Commandes Sage, lignes de commande, création, modification,
                       annulation d'OF, clôture de commande.
-   Avancement         Matrice commandes x opérations.
    Charge des postes  OF à faire / en cours / terminés par poste.
    Administration     Produits et gammes, opérations, postes, import Excel.
 
