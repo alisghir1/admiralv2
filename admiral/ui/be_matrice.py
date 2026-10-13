@@ -45,6 +45,9 @@ class MatriceMixin:
         self.tree_matrice.column("#0", width=LARGEUR_MIN_IDENTIFIANT, minwidth=LARGEUR_MIN_IDENTIFIANT, stretch=False)
         self.tree_matrice.bind("<<TreeviewSelect>>", lambda e: maj_tags_selection(self.tree_matrice))
         self.tree_matrice.bind("<Double-1>", self._ouvrir_depuis_avancement)
+        # Largeurs nécessaires au contenu ; la place en plus est répartie entre les colonnes d'opération
+        self._largeurs_matrice = {}
+        self.tree_matrice.bind("<Configure>", lambda e: self.root.after_idle(self._ajuster_colonnes_matrice), add="+")
 
     def refresh_be_matrice(self, etat=None):
         """etat : instantané déjà chargé par l'appelant (la Synthèse), sinon rechargé ici."""
@@ -82,15 +85,16 @@ class MatriceMixin:
                 niveaux.append((1, of_ligne["of"].id))
                 niveaux.extend((2, l[1]) for l in of_ligne["lignes"])
         largeur_id = max((n * RETRAIT_NIVEAU + police.measure(t) for n, t in niveaux), default=0)
-        self.tree_matrice.column("#0", width=max(LARGEUR_MIN_IDENTIFIANT, largeur_id + RETRAIT_NIVEAU + MARGE_COLONNE),
-                                 minwidth=LARGEUR_MIN_IDENTIFIANT, stretch=False)
+        self._largeurs_matrice = {"#0": max(LARGEUR_MIN_IDENTIFIANT, largeur_id + RETRAIT_NIVEAU + MARGE_COLONNE)}
         self.tree_matrice["columns"] = [ref for ref, _ in operations]
         for i, (ref, libelle) in enumerate(operations):
             contenu = max((police.measure(c[i]) for c in cellules), default=0) + MARGE_COLONNE
             entete = abreger(libelle, police_entete, LARGEUR_MAX_OPERATION - MARGE_COLONNE)
             largeur = max(LARGEUR_MIN_OPERATION, contenu, police_entete.measure(entete) + MARGE_COLONNE)
             self.tree_matrice.heading(ref, text=entete, anchor="center")
-            self.tree_matrice.column(ref, width=min(largeur, LARGEUR_MAX_OPERATION), anchor="center", stretch=False)
+            self._largeurs_matrice[ref] = min(largeur, LARGEUR_MAX_OPERATION)
+            self.tree_matrice.column(ref, anchor="center", stretch=False)
+        self._ajuster_colonnes_matrice()
 
         for cmd in commandes:
             cde = cmd["cde"]
@@ -113,6 +117,20 @@ class MatriceMixin:
         # Pas d'update_idletasks() ici : sous Windows, traiter les tâches en attente (fenêtres fermées
         # juste avant) fait planter Tk. yview_moveto n'en a pas besoin.
         self.tree_matrice.yview_moveto(defilement)
+
+    def _ajuster_colonnes_matrice(self):
+        """Colonnes à leur largeur utile ; si le tableau est plus large, le surplus est partagé
+        entre les colonnes d'opération (le tableau occupe toute la section, quelle que soit l'écran).
+        S'il est plus étroit, les largeurs utiles sont gardées et la barre horizontale apparaît."""
+        arbre = self.tree_matrice
+        if not self._largeurs_matrice or not arbre.winfo_exists():
+            return
+        operations = [c for c in self._largeurs_matrice if c != "#0"]
+        surplus = max(0, arbre.winfo_width() - sum(self._largeurs_matrice.values()) - 2)
+        part, reste = divmod(surplus, len(operations)) if operations else (0, 0)
+        arbre.column("#0", width=self._largeurs_matrice["#0"] + (surplus if not operations else 0), stretch=False)
+        for i, ref in enumerate(operations):
+            arbre.column(ref, width=self._largeurs_matrice[ref] + part + (1 if i < reste else 0), stretch=False)
 
     def _donnees_commande(self, etat, cde, operations):
         """Cellules et état d'une commande, de ses OF et de leurs lignes Sage."""
