@@ -11,7 +11,7 @@ from .widgets import get_icon
 COLONNES = [
     ("pas_demarre", "À faire", T.NEUTRE_TEXTE),
     ("encours", "En cours", T.ALERTE_TEXTE),
-    ("terminee", "Terminé sur ce poste", T.SUCCES_TEXTE),
+    ("terminee", "Étape terminée", T.SUCCES_TEXTE),
 ]
 MAX_CARTES_PAR_COLONNE = 60  # au-delà, CustomTkinter devient lent : on indique le reste
 MAX_POSTES_BOUTONS = 8
@@ -95,12 +95,14 @@ class ChargeMixin:
         etat = self.recharger_etat()
         ref_op = etat.operation_poste.get(codpost)
 
-        # OF dont une étape de gamme correspond à l'opération du poste (assignée à ce poste ou libre)
+        # OF en service (ni annulés, ni d'une commande clôturée) dont une étape correspond à l'opération
+        # du poste (assignée à ce poste ou libre). L'avancement est celui de l'étape, tous postes confondus :
+        # une étape libre faite par un autre poste n'est plus « à faire » ici.
         par_colonne = {cle: [] for cle, _, _ in COLONNES}
         if ref_op:
-            for of in etat.ofs.values():
+            for of in etat.ofs_en_service():
                 if any(code_op == ref_op and (not assigne or assigne == codpost) for code_op, assigne in etat.gamme(of.id)):
-                    scans = etat.compter_poste(of.id, codpost)
+                    scans = etat.compter(of.id, ref_op)
                     cle = "pas_demarre" if scans == 0 else ("terminee" if scans >= of.qte else "encours")
                     par_colonne[cle].append((of, scans))
 

@@ -14,10 +14,11 @@ from admiral import config
 from admiral.db import schema
 from admiral.db.depot import Depot
 
-ENTETES = "DO_Piece,DO_Date,DO_Tiers\nCC1,12/10/2026,MIROITERIE DU NORD\nCC2,12/10/2026,MENUISERIE DU CENTRE\nCC3,12/10/2026,FACADES DE L'OUEST\n"
+ENTETES = "DO_Piece,DO_Date,DO_Tiers\nCC1,12/10/2026,MIROITERIE DU NORD\nCC2,12/10/2026,MENUISERIE DU CENTRE\nCC3,12/10/2026,FACADES DE L'OUEST\nCC4,12/10/2026,AGENCEMENT DU SUD\n"
 LIGNES = ("DO_Piece,DL_Ligne,AR_Ref,DL_Design,DL_Qte,LONG,LARG\n"
           "CC1,1000,VITR,Double Vitrage,5,1200,800\nCC1,2000,FEUILLE,Verre Trempé,2,2100,950\n"
-          "CC2,1000,MIROIR,Miroir Argent,4,1500,600\nCC3,1000,VITR,Double Vitrage Argon,8,1800,1100\n")
+          "CC2,1000,MIROIR,Miroir Argent,4,1500,600\nCC3,1000,VITR,Double Vitrage Argon,8,1800,1100\n"
+          "CC4,1000,CAIS,Caisson bas,2,600,560\nCC4,2000,CAIS,Caisson haut,2,600,350\nCC4,3000,CAIS,Caisson colonne,2,600,2000\n")
 
 
 def creer_donnees(dossier):
@@ -174,6 +175,109 @@ class Interface(unittest.TestCase):
         self.assertEqual(self.scans("OF-1000", "TRE"), 0)
         self.assertEqual(self.messages[-1], "askyesno")
 
+    def lignes_au_poste(self, id_of, op, poste):
+        self.app.recharger_etat()
+        vue = self.app._vue_of(self.app.etat.ofs[id_of], op, poste, self.app.depot.libelles_operations())
+        return [l.scans for l in vue.lignes]
+
+    def test_05_b_moins_un_sur_la_ligne_cliquee(self):
+        # OF de 3 lignes de 2 pièces, scanné 4 fois à la douchette : lignes 2 / 2 / 0
+        id_of = self.app.depot.creer_of("CC4", "VITR", "Caissons", "", 6, "CC4-1000,CC4-2000,CC4-3000",
+                                        [("DEC", "DEC1"), ("FAC", "FAC1")])
+        self.cc4 = id_of
+        self.poste("DEC1")
+        for _ in range(4):
+            self.app.process_scan(id_of)
+        self.assertEqual(self.lignes_au_poste(id_of, "DEC", "DEC1"), [2, 2, 0])
+        # −1 sur la 1re ligne : c'est elle qui baisse, pas la dernière remplie
+        self.app.retirer_scans_manuels(id_of, 1, "CC4-1000")
+        self.assertEqual(self.lignes_au_poste(id_of, "DEC", "DEC1"), [1, 2, 0])
+        self.app.retirer_scans_manuels(id_of, 1, "CC4-2000")
+        self.assertEqual(self.lignes_au_poste(id_of, "DEC", "DEC1"), [1, 1, 0])
+        self.app.ajouter_scans_manuels(id_of, 1, "CC4-2000")
+        self.assertEqual(self.lignes_au_poste(id_of, "DEC", "DEC1"), [1, 2, 0])
+
+        # Une pièce déjà passée à l'étape suivante ne peut pas être défaite
+        self.poste("FAC1")
+        self.app.ajouter_scans_manuels(id_of, 1, "CC4-1000")
+        self.assertEqual(self.lignes_au_poste(id_of, "FAC", "FAC1"), [1, 0, 0])
+        self.poste("DEC1")
+        self.app.retirer_scans_manuels(id_of, 1, "CC4-1000")
+        self.assertEqual(self.bandeau()[0], "Annulation impossible")
+        self.assertEqual(self.lignes_au_poste(id_of, "DEC", "DEC1"), [1, 2, 0])
+        self.app.retirer_scans_manuels(id_of, "all")      # OF entier : 3 à DEC dont 1 déjà en FAC -> 2 annulées
+        self.assertEqual(self.scans(id_of, "DEC"), 1)
+        self.app.ajouter_scans_manuels(id_of, 2, "CC4-2000")   # remet la commande dans un état connu
+        self.assertEqual(self.lignes_au_poste(id_of, "DEC", "DEC1"), [1, 2, 0])
+
+    def test_05_c_ajouter_et_retirer_des_lignes_d_un_of(self):
+        id_of = next(of.id for of in self.app.recharger_etat().ofs_par_cde["CC4"])
+        self.app.refresh_dashboard()
+        self.app.tree_be_cmd.selection_set("CC4")
+        self.app.on_be_order_select()
+        # Ligne 3000 sans pièce : retirée, l'OF passe de 6 à 4 pièces et la ligne redevient libre
+        self.app.tree_be_of.selection_set(f"{id_of}_CC4-3000")
+        self.app._maj_boutons_of()
+        self.assertEqual(self.app.btn_supprimer_of.cget("text"), "Retirer la ligne")
+        self.app.supprimer_of_be()
+        of = self.app.recharger_etat().ofs[id_of]
+        self.assertEqual((of.qte, of.lignes_sage), (4, "CC4-1000,CC4-2000"))
+        self.assertEqual(self.app.tree_be_sage.item("CC4-3000", "values")[-1], "")
+        # Ligne 1000 déjà commencée : refus
+        del self.messages[:]
+        self.app.tree_be_of.selection_set(f"{id_of}_CC4-1000")
+        self.app.supprimer_of_be()
+        self.assertEqual(self.messages, ["showwarning"])
+        self.assertIn("CC4-1000", self.app.recharger_etat().ofs[id_of].lignes_sage)
+        # On la rajoute : lignes sélectionnées en haut + OF sélectionné en bas
+        self.app.tree_be_sage.selection_set("CC4-3000")
+        self.app.tree_be_of.selection_set(id_of)
+        self.app._maj_boutons_of()
+        self.assertEqual(self.app.btn_ajouter_lignes.cget("text"), f"Ajouter à {id_of}")
+        self.app.ajouter_lignes_be()
+        of = self.app.recharger_etat().ofs[id_of]
+        self.assertEqual(of.qte, 6)
+        self.assertEqual(self.app.depot.lignes_affectees("CC4")["CC4-3000"], id_of)
+        self.assertEqual(self.app.tree_be_sage.item("CC4-3000", "values")[-1], f"✓ {id_of}")
+
+    def test_05_d_designation_du_produit(self):
+        from admiral.ui.dialogs import AddOfDialog
+        dlg = AddOfDialog(self.root, self.app.depot, "CC4", lignes_sage="CC4-1000")
+        dlg.choisir_produit("MIROIR")
+        self.assertEqual(dlg.design_entry.get(), "Miroir Argent")
+        dlg.choisir_produit("VITR")
+        self.assertEqual(dlg.design_entry.get(), "Double Vitrage Isolant", "suit le produit tant qu'on n'y touche pas")
+        dlg.design_entry.delete(0, "end")
+        dlg.design_entry.insert(0, "Caisson spécial")
+        dlg.choisir_produit("MIROIR")
+        self.assertEqual(dlg.design_entry.get(), "Caisson spécial", "texte saisi à la main conservé")
+        dlg.destroy()
+
+    def test_05_e_dimensions_de_la_commande_non_modifiables(self):
+        from admiral.ui.dialogs import AddOfDialog
+        dlg = AddOfDialog(self.root, self.app.depot, "CC4", lignes_sage="CC4-1000", longueur=600, largeur=560,
+                          dimensions_sage=True)
+        self.assertEqual(dlg.longueur_entry.cget("state"), "disabled")
+        self.assertEqual(dlg.largeur_entry.cget("state"), "disabled")
+        self.assertEqual(dlg.epaisseur_entry.cget("state"), "normal", "l'épaisseur n'est pas dans Sage")
+        self.assertEqual(dlg.lire_champs_communs()["longueur"], 600)
+        dlg.destroy()
+        from admiral.domain import sage
+        self.assertEqual(sage.dimensions_communes([{"LONG": "600", "LARG": "560"}, {"LONG": "600.0", "LARG": "560"}]), (600, 560))
+        self.assertEqual(sage.dimensions_communes([{"LONG": "600", "LARG": "560"}, {"LONG": "600", "LARG": "350"}]), (None, None))
+
+    def test_05_f_of_annule_depuis_un_autre_pc(self):
+        # La carte est encore affichée au poste quand le Bureau d'étude annule l'OF : +1, Terminer et −1 refusés
+        id_of = next(of.id for of in self.app.recharger_etat().ofs_par_cde["CC4"])
+        avant = self.scans(id_of, "DEC")
+        self.app.depot.changer_statut_of(id_of, "annule")
+        self.poste("DEC1")
+        self.app.ajouter_scans_manuels(id_of, "all")
+        self.assertEqual(self.bandeau()[0], "Action refusée")
+        self.app.retirer_scans_manuels(id_of, 1)
+        self.assertEqual(self.scans(id_of, "DEC"), avant)
+        self.app.depot.changer_statut_of(id_of, "actif")
+
     def test_06_cartes_et_matrice_coherentes(self):
         self.poste("DEC1")
         self.app.process_scan("OF-1001")
@@ -208,7 +312,7 @@ class Interface(unittest.TestCase):
         self.assertIsNotNone(self.app._recherche_timer)
         self.app._appliquer_recherche()
         self.assertEqual(self.app.tree_cmd.get_children(), ("CC1",))
-        self.assertEqual(len(self.app.tree_be_cmd.get_children()), 3, "la recherche Atelier ne filtre pas le Bureau d'Étude")
+        self.assertEqual(len(self.app.tree_be_cmd.get_children()), 4, "la recherche Atelier ne filtre pas le Bureau d'Étude")
         self.app.search_entry.delete(0, "end")
         self.app._appliquer_recherche()
 
@@ -416,7 +520,7 @@ class Interface(unittest.TestCase):
         self.assertEqual(self.app.btn_importer.cget("state"), "disabled")
 
     def test_23_filtre_des_commandes_be(self):
-        # À ce stade, les trois commandes du jeu de test ont toutes au moins un OF
+        # À ce stade, les quatre commandes du jeu de test ont toutes au moins un OF
         def etats():
             return [self.app.tree_be_cmd.item(i, "values")[2] for i in self.app.tree_be_cmd.get_children()]
         self.app.notebook.set(self.app.NOM_ONGLET_GENERATION)
@@ -426,7 +530,7 @@ class Interface(unittest.TestCase):
         self.assertEqual(self.app.lbl_nb_commandes_be.cget("text"), "0 commande")
         self.app.filtre_be.set("Avec OF")
         self.app.refresh_dashboard()
-        self.assertEqual(len(self.app.tree_be_cmd.get_children()), 3)
+        self.assertEqual(len(self.app.tree_be_cmd.get_children()), 4)
         self.assertNotIn("Sans OF", etats())
         self.app.filtre_be.set("En cours")
         self.app.refresh_dashboard()

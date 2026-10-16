@@ -77,6 +77,9 @@ class Depot:
         Lève LigneDejaAffectee si une des lignes Sage appartient déjà à un OF actif (rien n'est créé)."""
         cles = self._cles(cde, lignes_sage)
         with self.conn:
+            # Verrou d'écriture dès la lecture du dernier numéro : deux PC ne peuvent pas prendre le même OF-n
+            if not self.conn.in_transaction:
+                self.conn.execute("BEGIN IMMEDIATE")
             self._verifier_lignes_libres(cles)
             # Tri numérique : OF-10000 doit passer après OF-9999
             dernier = self.conn.execute(
@@ -107,6 +110,46 @@ class Depot:
         if deja:
             raise LigneDejaAffectee(deja)
 
+    def ajouter_lignes_of(self, id_of, lignes, nouvelle_qte):
+        """Ajoute des lignes Sage à un OF actif et fixe sa nouvelle quantité.
+        Lève LigneDejaAffectee si une ligne est dans un autre OF, ValueError si l'OF est annulé."""
+        with self.conn:
+            cde, actuelles, statut = self.conn.execute(
+                "SELECT CDE, COALESCE(LignesSage, ''), COALESCE(Statut, 'actif') FROM CdeDetail WHERE ID_OF = ?",
+                (id_of,)).fetchone()
+            if statut == "annule":
+                raise ValueError(f"{id_of} est annulé : réactivez-le avant de lui ajouter des lignes.")
+            presentes = set(self._cles(cde, actuelles))
+            nouvelles = [c for c in self._cles(cde, lignes) if c not in presentes]
+            self._verifier_lignes_libres(nouvelles, sauf_of=id_of)
+            jetons = [c.strip() for c in actuelles.split(",") if c.strip()] + nouvelles
+            self.conn.executemany("INSERT OR IGNORE INTO OF_LignesSage (CleLigne, ID_OF) VALUES (?, ?)",
+                                  [(c, id_of) for c in nouvelles])
+            self.conn.execute("UPDATE CdeDetail SET LignesSage = ?, Qte = ? WHERE ID_OF = ?",
+                              (",".join(jetons), nouvelle_qte, id_of))
+        return nouvelles
+
+    def retirer_ligne_of(self, id_of, cle, nouvelle_qte):
+        """Retire une ligne Sage d'un OF (elle redevient libre) et fixe sa nouvelle quantité.
+        Refusé (ValueError) si des pièces de cette ligne ont été scannées."""
+        with self.conn:
+            cde, actuelles = self.conn.execute(
+                "SELECT CDE, COALESCE(LignesSage, '') FROM CdeDetail WHERE ID_OF = ?", (id_of,)).fetchone()
+            complete = cle_ligne(cde, cle)
+            jetons = [c.strip() for c in actuelles.split(",") if c.strip()]
+            retires = [c for c in jetons if cle_ligne(cde, c) == complete]
+            if not retires:
+                raise ValueError(f"La ligne {complete.rsplit('-', 1)[-1]} n'est pas dans {id_of}.")
+            scans = self.conn.execute(
+                f"SELECT COUNT(*) FROM Scans WHERE ID_OF = ? AND COALESCE(Annule, 0) = 0 "
+                f"AND Child_Key IN ({','.join('?' * len(retires))})", (id_of, *retires)).fetchone()[0]
+            if scans:
+                raise ValueError(f"La ligne {complete.rsplit('-', 1)[-1]} a déjà {scans} pièce(s) scannée(s) dans {id_of} : "
+                                 "annulez-les d'abord à l'atelier.")
+            self.conn.execute("DELETE FROM OF_LignesSage WHERE CleLigne = ? AND ID_OF = ?", (complete, id_of))
+            self.conn.execute("UPDATE CdeDetail SET LignesSage = ?, Qte = ? WHERE ID_OF = ?",
+                              (",".join(c for c in jetons if c not in retires), nouvelle_qte, id_of))
+
     def lignes_affectees(self, cde):
         """{clé de ligne « CDE-DL_Ligne »: OF actif qui la contient} pour une commande."""
         prefixe = f"{cde}-"
@@ -123,11 +166,14 @@ class Depot:
                 "INSERT INTO Scans (ID_OF, Poste, Child_Key) VALUES (?, ?, ?)",
                 [(id_of, poste, child_key) for poste, quantite in plan for _ in range(quantite)])
 
-    def ids_scans(self, id_of, ref_op, child_key=TOUS_SCANS):
-        """ID des scans d'un OF pour une opération, du plus récent au plus ancien."""
+    def ids_scans(self, id_of, ref_op, child_key=TOUS_SCANS, poste=None):
+        """ID des scans d'un OF pour une opération (d'un seul poste si `poste`), du plus récent au plus ancien."""
         sql = '''SELECT Scans.ID_Scan FROM Scans JOIN Postes ON Scans.Poste = Postes.CodPost
                  WHERE Scans.ID_OF = ? AND Postes.RefOp = ? AND COALESCE(Scans.Annule, 0) = 0'''
         params = [id_of, ref_op]
+        if poste is not None:
+            sql += " AND Scans.Poste = ?"
+            params.append(poste)
         if child_key is None:
             sql += " AND Scans.Child_Key IS NULL"
         elif child_key is not TOUS_SCANS:
@@ -135,6 +181,18 @@ class Depot:
             params.append(child_key)
         sql += " ORDER BY Scans.ID_Scan DESC"
         return [row[0] for row in self.conn.execute(sql, params)]
+
+    def rattacher_scans_generaux(self, id_of, ref_op, repartition):
+        """Rattache des scans généraux (douchette, +1 de l'OF) à des lignes Sage, du plus ancien au plus récent.
+        repartition : [(clé de ligne, nombre)]. Les compteurs ne changent pas : le scan est seulement attribué."""
+        libres = list(reversed(self.ids_scans(id_of, ref_op, None)))
+        maj = []
+        for cle, nombre in repartition:
+            for _ in range(nombre):
+                if libres:
+                    maj.append((cle, libres.pop(0)))
+        with self.conn:
+            self.conn.executemany("UPDATE Scans SET Child_Key = ? WHERE ID_Scan = ?", maj)
 
     def annuler_scans(self, ids):
         """Annulation tracée : le scan reste dans l'historique, marqué annulé avec sa date."""
@@ -224,7 +282,13 @@ class Depot:
         """[(CodPost, DesPost, RefOp)] triés par code"""
         return self.conn.execute("SELECT CodPost, DesPost, RefOp FROM Postes ORDER BY CodPost").fetchall()
 
-    def enregistrer_operation(self, ref_op, libelle):
+    def _existe(self, table, colonne, valeur):
+        return self._compter(f"SELECT COUNT(*) FROM {table} WHERE {colonne} = ?", valeur) > 0
+
+    def enregistrer_operation(self, ref_op, libelle, creation=False):
+        """creation : « Nouveau » dans l'Administration, refusé si le code existe déjà (pas d'écrasement)."""
+        if creation and self._existe("Operations", "RefOp", ref_op):
+            raise ValueError(f"L'opération {ref_op} existe déjà : sélectionnez-la dans la liste pour la modifier.")
         with self.conn:
             self.conn.execute("INSERT INTO Operations (RefOp, LibelOp) VALUES (?, ?) "
                               "ON CONFLICT(RefOp) DO UPDATE SET LibelOp = excluded.LibelOp", (ref_op, libelle))
@@ -239,7 +303,27 @@ class Depot:
         with self.conn:
             self.conn.execute("DELETE FROM Operations WHERE RefOp = ?", (ref_op,))
 
-    def enregistrer_poste(self, codpost, designation, ref_op):
+    def motif_operation_figee(self, codpost, ref_op):
+        """Pourquoi l'opération du poste ne peut pas passer à ref_op (None si c'est possible).
+        Les scans ne mémorisent que le poste : changer son opération réécrirait tout l'historique
+        (des pièces de découpe compteraient en usinage) et bloquerait les étapes qui lui sont assignées."""
+        row = self.conn.execute("SELECT RefOp FROM Postes WHERE CodPost = ?", (codpost,)).fetchone()
+        if not row or row[0] == ref_op:
+            return None
+        usages = [(self._compter("SELECT COUNT(*) FROM Scans WHERE Poste = ?", codpost), "scan(s)"),
+                  (self._compter("SELECT COUNT(*) FROM OF_Gammes WHERE Poste_Assigne = ?", codpost), "étape(s) d'OF assignée(s)")]
+        utilise = [f"{n} {quoi}" for n, quoi in usages if n]
+        if not utilise:
+            return None
+        return (f"Le poste {codpost} a déjà {', '.join(utilise)} pour l'opération {row[0]} : changer son opération "
+                "fausserait l'historique. Créez plutôt un nouveau poste.")
+
+    def enregistrer_poste(self, codpost, designation, ref_op, creation=False):
+        if creation and self._existe("Postes", "CodPost", codpost):
+            raise ValueError(f"Le poste {codpost} existe déjà : sélectionnez-le dans la liste pour le modifier.")
+        motif = self.motif_operation_figee(codpost, ref_op)
+        if motif:
+            raise ValueError(motif)
         with self.conn:
             self.conn.execute("INSERT INTO Postes (CodPost, DesPost, RefOp) VALUES (?, ?, ?) "
                               "ON CONFLICT(CodPost) DO UPDATE SET DesPost = excluded.DesPost, RefOp = excluded.RefOp",
@@ -251,11 +335,26 @@ class Depot:
         utilise = [f"{n} {quoi}" for n, quoi in usages if n]
         if utilise:
             raise ValueError(f"Le poste {codpost} est utilisé par " + ", ".join(utilise) + ".")
+        # Dernier poste d'une opération encore à faire dans des OF actifs : plus personne ne pourrait la scanner
+        ref_op = self.operation_du_poste(codpost)
+        if ref_op and self._compter("SELECT COUNT(*) FROM Postes WHERE RefOp = ?", ref_op) == 1:
+            n = self._compter("SELECT COUNT(DISTINCT g.ID_OF) FROM OF_Gammes g JOIN CdeDetail c ON c.ID_OF = g.ID_OF "
+                              "WHERE g.CodeOp = ? AND COALESCE(c.Statut, 'actif') = 'actif'", ref_op)
+            if n:
+                raise ValueError(f"{codpost} est le seul poste de l'opération {ref_op}, utilisée par {n} OF actif(s) : "
+                                 "créez d'abord un autre poste pour cette opération.")
         with self.conn:
             self.conn.execute("DELETE FROM Postes WHERE CodPost = ?", (codpost,))
 
-    def enregistrer_produit(self, ref_prod, designation, operations=None):
-        """Crée ou modifie un produit ; operations (liste de RefOp dans l'ordre) remplace sa gamme si fournie."""
+    def enregistrer_produit(self, ref_prod, designation, operations=None, creation=False):
+        """Crée ou modifie un produit ; operations (liste de RefOp dans l'ordre) remplace sa gamme si fournie.
+        Une opération ne peut figurer qu'une fois dans une gamme (les pièces sont comptées par opération)."""
+        if creation and self._existe("Produits", "RefProd", ref_prod):
+            raise ValueError(f"Le produit {ref_prod} existe déjà : sélectionnez-le dans la liste pour le modifier.")
+        if operations is not None and len(set(operations)) != len(operations):
+            doublons = sorted({op for op in operations if operations.count(op) > 1})
+            raise ValueError(f"L'opération {', '.join(doublons)} figure deux fois dans la gamme : "
+                             "une opération ne peut être faite qu'une fois par pièce.")
         with self.conn:
             self.conn.execute("INSERT INTO Produits (RefProd, DesProd) VALUES (?, ?) "
                               "ON CONFLICT(RefProd) DO UPDATE SET DesProd = excluded.DesProd", (ref_prod, designation))
@@ -277,16 +376,34 @@ class Depot:
 
     def importer_referentiel(self, referentiel):
         """Ajoute ou met à jour opérations, postes, produits et gammes, sans toucher aux OF ni aux scans.
-        Retourne le nombre d'éléments importés par catégorie."""
+        Retourne le nombre d'éléments importés par catégorie, et sous « avertissements » ce qui n'a pas
+        été appliqué : opération d'un poste déjà utilisé (gardée), opération en double dans une gamme (retirée)."""
+        avertissements = []
+        postes = []
+        for codpost, designation, ref_op in referentiel.postes:
+            if self.motif_operation_figee(codpost, ref_op):
+                actuelle = self.operation_du_poste(codpost)
+                avertissements.append(f"poste {codpost} : opération {actuelle} conservée (déjà utilisé), {ref_op} ignorée")
+                ref_op = actuelle
+            postes.append((codpost, designation, ref_op))
+        gammes = {}
+        for ref_prod, operations in referentiel.gammes.items():
+            uniques = list(dict.fromkeys(operations))
+            if len(uniques) != len(operations):
+                avertissements.append(f"gamme {ref_prod} : opération en double retirée")
+            gammes[ref_prod] = uniques
         with self.conn:
             self.conn.executemany("INSERT INTO Operations (RefOp, LibelOp) VALUES (?, ?) "
                                   "ON CONFLICT(RefOp) DO UPDATE SET LibelOp = excluded.LibelOp", referentiel.operations)
             self.conn.executemany("INSERT INTO Postes (CodPost, DesPost, RefOp) VALUES (?, ?, ?) "
                                   "ON CONFLICT(CodPost) DO UPDATE SET DesPost = excluded.DesPost, RefOp = excluded.RefOp",
-                                  referentiel.postes)
+                                  postes)
             self.conn.executemany("INSERT INTO Produits (RefProd, DesProd) VALUES (?, ?) "
                                   "ON CONFLICT(RefProd) DO UPDATE SET DesProd = excluded.DesProd", referentiel.produits)
-            for ref_prod, operations in referentiel.gammes.items():
+            for ref_prod, operations in gammes.items():
                 self._remplacer_gamme(ref_prod, operations)
-        return {"opérations": len(referentiel.operations), "postes": len(referentiel.postes),
-                "produits": len(referentiel.produits), "gammes": len(referentiel.gammes)}
+        compte = {"opérations": len(referentiel.operations), "postes": len(referentiel.postes),
+                  "produits": len(referentiel.produits), "gammes": len(referentiel.gammes)}
+        if avertissements:
+            compte["avertissements"] = avertissements
+        return compte

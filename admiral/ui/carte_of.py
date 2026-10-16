@@ -162,7 +162,7 @@ class CarteOF(ctk.CTkFrame):
         self.btn_moins.configure(state="normal" if vue.scans else "disabled")
         self.menu.entryconfigure(2, state="normal" if vue.scans else "disabled")
         self._maj_frise(vue.etapes)
-        self._maj_lignes(vue.lignes)
+        self._maj_lignes(vue.lignes, of_termine=termine)
 
     def _maj_frise(self, etapes):
         cles = [(e.libelle, e.ici) for e in etapes]
@@ -191,7 +191,7 @@ class CarteOF(ctk.CTkFrame):
             suffixe = " · ce poste" if etape.ici else ""
             label.configure(text=f"   {prefixe}{etape.libelle} {etape.scans}/{etape.qte}{suffixe}   ", fg_color=fond, text_color=couleur)
 
-    def _maj_lignes(self, lignes):
+    def _maj_lignes(self, lignes, of_termine=False):
         if [l.cle for l in lignes] != list(self._lignes):
             for widget in self.cadre_lignes.winfo_children():
                 widget.destroy()
@@ -205,7 +205,7 @@ class CarteOF(ctk.CTkFrame):
             widgets = self._lignes[ligne.cle]
             widgets["pastille"].definir(ligne.etat)
             widgets["compte"].configure(text=f"{ligne.scans} / {ligne.qte}")
-            widgets["plus"].configure(state="disabled" if ligne.scans >= ligne.qte else "normal")
+            widgets["plus"].configure(state="disabled" if of_termine or ligne.scans >= ligne.qte else "normal")
             widgets["moins"].configure(state="normal" if ligne.scans else "disabled")
 
     def _creer_ligne(self, ligne):

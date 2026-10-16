@@ -61,7 +61,7 @@ def calculer(etat, postes, libelles, scans_jour, aujourd_hui):
         for of in ofs:
             if not any(op == ref_op and (not assigne or assigne == code) for op, assigne in etat.gamme(of.id)):
                 continue
-            n = etat.compter_poste(of.id, code)
+            n = etat.compter(of.id, ref_op)   # avancement de l'étape, tous postes (cohérent avec « Reste »)
             if n == 0:
                 ligne.a_faire += 1
             elif n >= of.qte:

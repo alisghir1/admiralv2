@@ -28,6 +28,9 @@ Version de validation (données de démonstration)
                       annulation d'OF, clôture de commande. Une ligne de commande
                       ne peut être que dans un seul OF : la colonne « OF » indique
                       celui qui la contient (annuler l'OF libère ses lignes).
+                      « Ajouter à l'OF » complète un OF avec d'autres lignes ;
+                      sélectionner une ligne sous un OF permet de la retirer.
+                      Les dimensions viennent de la commande Sage (non modifiables).
    Charge des postes  OF à faire / en cours / terminés par poste.
    Administration     Produits et gammes, opérations, postes, import Excel.
 

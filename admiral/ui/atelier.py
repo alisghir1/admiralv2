@@ -386,11 +386,24 @@ class AtelierMixin:
         self.update_status_bar("success", message, f"{of.id} · {of.design}",
                                f"{self.etat.compter(of.id, self.get_mon_op())} / {of.qte}")
 
+    def _of_modifiable(self, of):
+        """Un OF annulé ou d'une commande clôturée ne se travaille plus (même si sa carte est encore affichée :
+        le Bureau d'étude a pu l'annuler depuis un autre PC)."""
+        if of.annule:
+            motif = f"{of.id} a été annulé par le Bureau d'étude."
+        elif of.cde in self.etat.cloturees:
+            motif = f"La commande {of.cde} est clôturée."
+        else:
+            return True
+        self.update_status_bar("error", "Action refusée", motif)
+        self.update_lines_view(of.cde)
+        return False
+
     def ajouter_scans_manuels(self, id_of, amount, child_key=None):
         """Ajout manuel (+1, Terminer) : complète aussi les étapes précédentes si besoin."""
         self.recharger_etat()
         of = self.etat.ofs.get(id_of)
-        if not of:
+        if not of or not self._of_modifiable(of):
             return
         mon_op, codpost = self.get_mon_op(), self.get_codpost()
         motif = progression.motif_hors_gamme(of.id, self.etat.gamme(of.id), mon_op, codpost)
@@ -408,6 +421,7 @@ class AtelierMixin:
             scans_actuels = self.etat.compter(of.id, mon_op)
 
         to_add = target_qte - scans_actuels if amount == "all" else min(amount, target_qte - scans_actuels)
+        to_add = min(to_add, of.qte - self.etat.compter(of.id, mon_op))   # jamais plus que la quantité de l'OF
         if to_add <= 0:
             self.update_status_bar("warning", "Quantité déjà atteinte", f"{of.id} est complet à ce poste.")
             return
@@ -418,29 +432,43 @@ class AtelierMixin:
         self._apres_scan_manuel(of, f"{to_add} pièce{'s' if to_add > 1 else ''} ajoutée{'s' if to_add > 1 else ''}")
 
     def retirer_scans_manuels(self, id_of, amount, child_key=None):
-        """Annulation (−1, Tout annuler) des scans de ce poste ; « Tout annuler » demande confirmation."""
+        """Annulation (−1, Tout annuler) des scans de ce poste ; « Tout annuler » demande confirmation.
+        Une pièce déjà passée à l'étape suivante ne peut pas être défaite, ni une pièce faite à un autre poste."""
         self.recharger_etat()
         of = self.etat.ofs.get(id_of)
-        if not of:
+        if not of or not self._of_modifiable(of):
             return
-        mon_op = self.get_mon_op()
+        mon_op, codpost = self.get_mon_op(), self.get_codpost()
+        enfants = sage.lignes_enfants(self.sage, of.cde, of.lignes_sage) if child_key is not None else []
 
         if child_key is not None:
-            # Scans propres à la ligne d'abord, sinon scans généraux de l'OF
-            scans = self.depot.ids_scans(of.id, mon_op, child_key) or self.depot.ids_scans(of.id, mon_op, None)
-            lignes = dict(self.sage.lignes_commande(of.cde))
-            target_qte = sage.lire_qte(lignes.get(child_key, {}).get("DL_Qte", "1"))
+            # Les scans généraux (douchette, +1 de l'OF) sont affichés répartis sur les lignes, de haut en bas.
+            # On les rattache d'abord à la ligne où ils sont affichés : le −1 retire alors bien une pièce de
+            # la ligne cliquée, et les autres lignes ne bougent pas.
+            repartition = progression.scans_generaux_par_ligne(self.etat, of.id, mon_op, enfants)
+            if repartition:
+                self.depot.rattacher_scans_generaux(of.id, mon_op, repartition)
+                self.recharger_etat()
+            scans = self.depot.ids_scans(of.id, mon_op, child_key, poste=codpost)
+            quoi = f"la ligne {child_key.rsplit('-', 1)[-1]} de {of.id}"
         else:
-            scans = self.depot.ids_scans(of.id, mon_op)
-            target_qte = len(scans)
+            scans = self.depot.ids_scans(of.id, mon_op, poste=codpost)
+            quoi = of.id
 
         if not scans:
-            self.update_status_bar("warning", "Rien à annuler", f"Aucun scan de {of.id} à ce poste.")
+            self.update_status_bar("warning", "Rien à annuler", f"Aucune pièce de {quoi} à ce poste.")
+            return
+        possible = progression.retrait_max(self.etat, of, mon_op, codpost, child_key, enfants)
+        if possible <= 0:
+            self.update_status_bar("warning", "Annulation impossible",
+                                   f"Les pièces de {quoi} sont déjà passées à l'étape suivante : annulez d'abord là-bas.")
             return
 
-        to_remove = min(len(scans), target_qte if amount == "all" else amount)
+        to_remove = min(len(scans), possible, len(scans) if amount == "all" else amount)
         if amount == "all" and not messagebox.askyesno(
-                "Tout annuler", f"Annuler les {to_remove} scans de {of.id} à ce poste ?\n\nCette action est définitive."):
+                "Tout annuler", f"Annuler {to_remove} pièce{'s' if to_remove > 1 else ''} de {quoi} à ce poste ?"
+                + ("" if to_remove == len(scans) else f"\n\nLes {len(scans) - to_remove} autres sont déjà passées à l'étape suivante.")
+                + "\n\nCette action est définitive."):
             return
         self.depot.annuler_scans(scans[:to_remove])
         journal().info("Annulation de %d scan(s) %s (ligne %s)", to_remove, of.id, child_key)

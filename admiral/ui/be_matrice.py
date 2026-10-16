@@ -21,7 +21,9 @@ LARGEUR_MAX_OPERATION = 136   # au-delà, l'en-tête est abrégé (« Montage, A
 
 def cellule(scans, qte):
     """Texte d'une cellule : symbole d'état + compteur (l'état ne repose pas sur la couleur seule)."""
-    if qte > 0 and scans >= qte:
+    if qte <= 0:
+        return "—"   # ligne à quantité nulle (texte Sage) : sans objet
+    if scans >= qte:
         return f"✓ {scans}/{qte}"
     return f"◐ {scans}/{qte}" if scans else f"○ 0/{qte}"
 

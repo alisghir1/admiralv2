@@ -152,7 +152,11 @@ class AdministrationMixin:
         if not code or not libelle:
             self._message_admin("Renseignez le code et le libellé de l'opération.", erreur=True)
             return
-        self.depot.enregistrer_operation(code, libelle)
+        try:
+            self.depot.enregistrer_operation(code, libelle, creation=not self.tree_admin_ops.selection())
+        except ValueError as exc:
+            self._message_admin(str(exc), erreur=True)
+            return
         journal().info("Opération %s enregistrée", code)
         self._apres_modification_referentiel(f"Opération {code} enregistrée")
         self.tree_admin_ops.selection_set(code)
@@ -217,7 +221,11 @@ class AdministrationMixin:
         if not code or not designation or not operation:
             self._message_admin("Renseignez le code, la désignation et l'opération du poste.", erreur=True)
             return
-        self.depot.enregistrer_poste(code, designation, operation)
+        try:
+            self.depot.enregistrer_poste(code, designation, operation, creation=not self.tree_admin_postes.selection())
+        except ValueError as exc:
+            self._message_admin(str(exc), erreur=True)
+            return
         journal().info("Poste %s enregistré", code)
         self._apres_modification_referentiel(f"Poste {code} enregistré")
         self.tree_admin_postes.selection_set(code)
@@ -302,6 +310,9 @@ class AdministrationMixin:
 
     def _ajouter_etape(self):
         choix = self.gamme_ajout.get().split(" · ")[0]
+        if choix in self.gamme_edition:
+            self._message_admin(f"L'opération {choix} est déjà dans la gamme : une pièce ne la fait qu'une fois.", erreur=True)
+            return
         if choix:
             self.gamme_edition.append(choix)
             self._dessiner_gamme()
@@ -328,7 +339,12 @@ class AdministrationMixin:
         if not ref or not designation:
             self._message_admin("Renseignez la référence et la désignation du produit.", erreur=True)
             return
-        self.depot.enregistrer_produit(ref, designation, list(self.gamme_edition))
+        try:
+            self.depot.enregistrer_produit(ref, designation, list(self.gamme_edition),
+                                           creation=not self.tree_admin_produits.selection())
+        except ValueError as exc:
+            self._message_admin(str(exc), erreur=True)
+            return
         journal().info("Produit %s enregistré, gamme %s", ref, self.gamme_edition)
         self._apres_modification_referentiel(f"Produit {ref} enregistré")
         self.tree_admin_produits.selection_set(ref)
@@ -397,9 +413,13 @@ class AdministrationMixin:
         if not self._referentiel_a_importer:
             return
         compte = self.depot.importer_referentiel(self._referentiel_a_importer)
+        avertissements = compte.pop("avertissements", [])
         resume = ", ".join(f"{n} {quoi}" for quoi, n in compte.items())
-        journal().info("Référentiel importé : %s", resume)
-        self.lbl_apercu_import.configure(text=f"Import terminé : {resume}.", text_color=T.SUCCES_VIF)
+        journal().info("Référentiel importé : %s ; non appliqué : %s", resume, avertissements)
+        message = f"Import terminé : {resume}."
+        if avertissements:
+            message += "\nNon appliqué : " + " ; ".join(avertissements) + "."
+        self.lbl_apercu_import.configure(text=message, text_color=T.ALERTE_TEXTE if avertissements else T.SUCCES_VIF)
         self.btn_importer.configure(state="disabled")
         self._referentiel_a_importer = None
         self._apres_modification_referentiel("Référentiel importé")

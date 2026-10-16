@@ -99,8 +99,10 @@ def situation_au_poste(etat, dispo, etape_precedente=None, scans_precedents=0, q
 
 
 def statut_ligne(scans, qte):
-    """(statut, tag) d'une ligne Sage rattachée à un OF."""
-    if scans >= qte and qte > 0:
+    """(statut, tag) d'une ligne Sage rattachée à un OF. Quantité nulle (ligne de texte) : sans objet."""
+    if qte <= 0:
+        return "Sans objet", "terminee"
+    if scans >= qte:
         return "Terminé", "terminee"
     if scans > 0:
         return f"En cours ({scans}/{qte})", "encours"
@@ -155,6 +157,31 @@ def avancement_global_commande(etat, cde):
     return faites, prevues, "encours" if commencee else "pas_demarre"
 
 
+def effectif(etat, id_of, ref_op, child_key=None, enfants=()):
+    """Pièces faites à une opération : pour tout l'OF, ou pour une ligne Sage (scans propres
+    à la ligne + part des scans généraux qui lui revient, comme à l'affichage)."""
+    if child_key is None:
+        return etat.compter(id_of, ref_op)
+    return repartir_scans(etat, id_of, ref_op, enfants).get(child_key, etat.compter(id_of, ref_op, child_key))
+
+
+def retrait_max(etat, of, mon_op, codpost, child_key=None, enfants=()):
+    """Pièces qu'on peut défaire à ce poste : celles déjà passées à l'étape suivante ne peuvent plus l'être."""
+    gamme = etat.gamme(of.id)
+    index = index_etape(gamme, mon_op, codpost)
+    ici = effectif(etat, of.id, mon_op, child_key, enfants)
+    if index < 0 or index + 1 >= len(gamme):
+        return ici
+    return max(0, ici - effectif(etat, of.id, gamme[index + 1][0], child_key, enfants))
+
+
+def scans_generaux_par_ligne(etat, id_of, ref_op, enfants):
+    """[(clé de ligne, nombre de scans généraux que l'affichage lui attribue)], dans l'ordre des lignes."""
+    repartis = repartir_scans(etat, id_of, ref_op, enfants)
+    return [(cle, repartis[cle] - etat.compter(id_of, ref_op, cle)) for cle, *_ in enfants
+            if repartis[cle] > etat.compter(id_of, ref_op, cle)]
+
+
 def plan_rattrapage(etat, of, mon_op, codpost, nombre, child_key=None, enfants=()):
     """Scans à insérer pour un ajout manuel de `nombre` pièces à ce poste : [(poste, quantité)].
 
@@ -163,17 +190,10 @@ def plan_rattrapage(etat, of, mon_op, codpost, nombre, child_key=None, enfants=(
     généraux répartis sur la ligne."""
     gamme = etat.gamme(of.id)
     index = index_etape(gamme, mon_op, codpost)
-
-    def effectif(ref_op):
-        if child_key is None:
-            return etat.compter(of.id, ref_op)
-        repartis = repartir_scans(etat, of.id, ref_op, enfants)
-        return repartis.get(child_key, etat.compter(of.id, ref_op, child_key))
-
-    cible = effectif(mon_op) + nombre
+    cible = effectif(etat, of.id, mon_op, child_key, enfants) + nombre
     plan = []
     for prev_op, poste_assigne in gamme[:max(index, 0)]:
-        manquants = max(0, cible - effectif(prev_op))
+        manquants = max(0, cible - effectif(etat, of.id, prev_op, child_key, enfants))
         poste = poste_assigne or etat.premier_poste(prev_op)
         if manquants and poste:
             plan.append((poste, manquants))

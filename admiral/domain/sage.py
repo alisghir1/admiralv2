@@ -31,6 +31,36 @@ def lire_qte(valeur, defaut=1):
         return defaut
 
 
+def numero_ligne(ligne):
+    """Clé de tri d'une ligne Sage : 1000, 2000, … 10000 dans l'ordre numérique (pas alphabétique)."""
+    texte = str(ligne.get("DL_Ligne", "")).strip()
+    try:
+        return (0, float(texte.replace(",", ".")), texte)
+    except ValueError:
+        return (1, 0, texte)
+
+
+def fabricable(ligne):
+    """Ligne à fabriquer : un article et une quantité. Les lignes de texte, de commentaire ou de sous-total
+    de Sage (sans référence article, ou à quantité nulle) ne vont pas dans un OF."""
+    return bool(str(ligne.get("AR_Ref", "")).strip()) and lire_qte(ligne.get("DL_Qte", "0"), 0) > 0
+
+
+def dimension_mm(valeur):
+    """Dimension Sage ("600", "600.000", "600,5") en millimètres entiers, ou None si absente ou invalide."""
+    try:
+        nombre = round(float(str(valeur).strip().replace(',', '.')))
+    except (TypeError, ValueError):
+        return None
+    return nombre if nombre > 0 else None
+
+
+def dimensions_communes(lignes):
+    """(longueur, largeur) en mm si toutes les lignes ont les mêmes dimensions, sinon (None, None)."""
+    dims = {(dimension_mm(l.get("LONG")), dimension_mm(l.get("LARG"))) for l in lignes}
+    return dims.pop() if len(dims) == 1 else (None, None)
+
+
 def detecter_encodage(chemin):
     for encodage in ('utf-8-sig', 'cp1252'):
         try:
@@ -87,6 +117,12 @@ def charger(dossier):
             donnees.lignes_par_piece.setdefault(do_piece, []).append((cle, row))
 
     return donnees
+
+
+def cle_complete(do_piece, cle):
+    """« 1000 » ou « CC1-1000 » -> « CC1-1000 » (les anciens OF stockaient parfois la clé courte)."""
+    cle = cle.strip()
+    return cle if cle.startswith(f"{do_piece}-") else f"{do_piece}-{cle}"
 
 
 def lignes_enfants(donnees, do_piece, lignes_sage):

@@ -71,6 +71,30 @@ class LignesUniques(unittest.TestCase):
         self.assertEqual(self.depot.lignes_affectees("CC1"), {})
         self.depot.creer_of("CC1", "P", "B", "", 1, "CC1-1000", GAMME)
 
+    def test_ajouter_des_lignes_a_un_of(self):
+        a = self.depot.creer_of("CC1", "P", "A", "", 2, "1000", GAMME)        # clé courte (ancien format)
+        b = self.depot.creer_of("CC1", "P", "B", "", 1, "CC1-3000", GAMME)
+        self.assertEqual(self.depot.ajouter_lignes_of(a, "CC1-1000,CC1-2000", 3), ["CC1-2000"])
+        self.assertEqual(self.depot.conn.execute("SELECT LignesSage, Qte FROM CdeDetail WHERE ID_OF = ?", (a,)).fetchone(),
+                         ("1000,CC1-2000", 3), "clé d'origine conservée (scans déjà rattachés)")
+        with self.assertRaises(LigneDejaAffectee):
+            self.depot.ajouter_lignes_of(a, "CC1-3000", 4)
+        self.assertEqual(self.depot.lignes_affectees("CC1")["CC1-3000"], b)
+        self.depot.changer_statut_of(b, "annule")
+        with self.assertRaises(ValueError):
+            self.depot.ajouter_lignes_of(b, "CC1-4000", 2)
+
+    def test_retirer_une_ligne_d_un_of(self):
+        a = self.depot.creer_of("CC1", "P", "A", "", 3, "1000,CC1-2000", GAMME)
+        self.depot.ajouter_scans(a, [("DEC1", 1)], child_key="1000")
+        with self.assertRaises(ValueError):
+            self.depot.retirer_ligne_of(a, "CC1-1000", 2)              # ligne déjà scannée
+        self.depot.retirer_ligne_of(a, "CC1-2000", 2)
+        self.assertEqual(self.depot.conn.execute("SELECT LignesSage, Qte FROM CdeDetail WHERE ID_OF = ?", (a,)).fetchone(),
+                         ("1000", 2))
+        self.assertEqual(self.depot.lignes_affectees("CC1"), {"CC1-1000": a})
+        self.depot.creer_of("CC1", "P", "B", "", 1, "CC1-2000", GAMME)  # la ligne retirée est de nouveau libre
+
 
 class MigrationCinq(unittest.TestCase):
     def test_reprise_des_of_existants_et_sauvegarde(self):

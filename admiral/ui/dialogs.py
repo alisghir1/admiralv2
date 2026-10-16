@@ -1,4 +1,5 @@
 """Fenêtres de dialogue : choix du poste, création d'OF."""
+import sqlite3
 import sys
 import tkinter as tk
 from datetime import date
@@ -108,14 +109,21 @@ def _entier_positif(valeur):
     return int(nombre)
 
 
-def lire_date(texte):
-    """ "15/10", "15/10/26" ou "15/10/2026" -> "2026-10-15" ; "" -> None ; sinon ValueError."""
+def lire_date(texte, aujourd_hui=None):
+    """ "15/10", "15/10/26" ou "15/10/2026" -> "2026-10-15" ; "" -> None ; sinon ValueError.
+    Sans année : la prochaine occurrence (le 05/01 saisi en décembre est en janvier suivant),
+    sauf une date passée de moins de deux mois (OF déjà en retard)."""
+    aujourd_hui = aujourd_hui or date.today()
     texte = texte.strip()
     if not texte:
         return None
     morceaux = texte.replace("-", "/").replace(".", "/").split("/")
     if len(morceaux) == 2:
-        morceaux.append(str(date.today().year))
+        jour, mois = (int(m) for m in morceaux)
+        resultat = date(aujourd_hui.year, mois, jour)
+        if (aujourd_hui - resultat).days > 60:
+            resultat = date(aujourd_hui.year + 1, mois, jour)
+        return resultat.isoformat()
     if len(morceaux) != 3:
         raise ValueError
     jour, mois, annee = (int(m) for m in morceaux)
@@ -169,6 +177,14 @@ class _FormulaireOF(FenetreDialogue):
     def etiquette(self, ligne, libelle):
         ctk.CTkLabel(self.form, text=libelle, font=T.police(T.TAILLE_CORPS, gras=True), text_color=T.TEXTE_ATTENUE,
                      anchor="w").grid(row=ligne, column=0, sticky="nw", pady=(T.ESPACE_S + 6, 0), padx=(0, T.ESPACE_M))
+
+    def verrouiller_dimensions(self, longueur, largeur):
+        """Longueur et largeur issues des lignes de commande Sage : affichées, grisées, non modifiables.
+        L'épaisseur reste à saisir (elle n'est pas dans Sage)."""
+        self._dimensions_imposees = (longueur, largeur)
+        for entree in (self.longueur_entry, self.largeur_entry):
+            entree.configure(state="disabled", fg_color=T.CARTE, text_color=T.TEXTE_ATTENUE,
+                             placeholder_text="—")
 
     def champs_communs(self, ligne, design="", qte=1, longueur="", largeur="", epaisseur="", observ="",
                        date_besoin=None, urgent=False, aide_qte="pièces"):
@@ -239,7 +255,11 @@ class _FormulaireOF(FenetreDialogue):
             self.erreur(f"La quantité doit être un nombre entier {minimum}.", self.qte_entry)
             return None
         valeurs = {"qte": qte}
+        imposees = getattr(self, "_dimensions_imposees", None)
         for nom, entree in (("longueur", self.longueur_entry), ("largeur", self.largeur_entry)):
+            if imposees is not None:   # dimensions de la commande Sage : jamais celles du champ
+                valeurs[nom] = imposees[0 if nom == "longueur" else 1]
+                continue
             try:
                 valeurs[nom] = _entier_positif(entree.get())
             except ValueError:
@@ -283,10 +303,13 @@ class AddOfDialog(_FormulaireOF):
     """Création d'un OF pour une commande. result = ID de l'OF créé, ou None si annulé."""
 
     def __init__(self, parent, depot, cde, client="", default_qte=1, default_design="", default_obs="",
-                 lignes_sage="", longueur="", largeur=""):
+                 lignes_sage="", longueur="", largeur="", dimensions_sage=False):
+        """dimensions_sage : les dimensions viennent des lignes de commande Sage et ne se modifient pas ici."""
         sous_titre = f"Commande {cde}" + (f" · {client}" if client else "")
         if lignes_sage:
             sous_titre += f" · lignes {', '.join(l.rsplit('-', 1)[-1] for l in lignes_sage.split(','))}"
+        if dimensions_sage:
+            sous_titre += " · dimensions de la commande" if longueur and largeur else " · dimensions différentes selon les lignes"
         super().__init__(parent, f"Nouvel OF · commande {cde}", "Nouvel ordre de fabrication", sous_titre, "Créer l'OF")
         self.depot = depot
         self.cde = cde
@@ -308,6 +331,11 @@ class AddOfDialog(_FormulaireOF):
         self._remplir_produits()
 
         self.champs_communs(1, design=default_design, qte=default_qte, longueur=longueur, largeur=largeur, observ=default_obs)
+        # Désignation proposée = nom du produit choisi ; elle suit le produit tant qu'on ne l'a pas retapée
+        self._design_auto = self.design_entry.get()
+        self._dimensions_imposees = None
+        if dimensions_sage:
+            self.verrouiller_dimensions(longueur or None, largeur or None)
         self.zone_gamme("Décochez les opérations à ne pas faire. Choisissez un poste ou laissez « Libre ».")
         self._message_gamme("Choisissez d'abord un produit.")
 
@@ -347,8 +375,10 @@ class AddOfDialog(_FormulaireOF):
         ref = self.produit_choisi()
         if ref is None:
             return
-        if not self.design_entry.get().strip():
-            self.design_entry.insert(0, self.produits_map.get(ref, ""))
+        if self.design_entry.get().strip() in ("", self._design_auto.strip()):
+            self._design_auto = self.produits_map.get(ref, "")
+            self.design_entry.delete(0, tk.END)
+            self.design_entry.insert(0, self._design_auto)
 
         for widget in self.gamme_frame.winfo_children():
             widget.destroy()
@@ -396,6 +426,9 @@ class AddOfDialog(_FormulaireOF):
         except LigneDejaAffectee as exc:   # un autre poste a pris la ligne pendant la saisie
             self.erreur(str(exc))
             return
+        except sqlite3.IntegrityError:     # numéro d'OF pris au même instant par un autre PC
+            self.erreur("Un autre poste vient de créer un OF : cliquez à nouveau sur « Créer l'OF ».")
+            return
         self.destroy()
 
 
@@ -414,6 +447,9 @@ class ModifierOfDialog(_FormulaireOF):
         self.champs_communs(0, design=of.design, qte=of.qte, longueur=of.longueur, largeur=of.largeur,
                             epaisseur=of.epaisseur, observ=of.observ, date_besoin=of.date_besoin,
                             urgent=of.urgent, aide_qte=aide)
+        self._dimensions_imposees = None
+        if of.lignes_sage:   # OF issu de lignes de commande : dimensions de Sage, non modifiables
+            self.verrouiller_dimensions(of.longueur, of.largeur)
         self.zone_gamme("Vous pouvez changer le poste de chaque opération. Pour ajouter ou retirer une "
                         "opération, supprimez l'OF (s'il n'a pas encore de scan) et recréez-le.")
         libelles = depot.libelles_operations()
