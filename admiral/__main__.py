@@ -56,6 +56,13 @@ def main():
         root.destroy()
         return 1
     root.mainloop()
+    if autotest:
+        # Sous Windows, la libération de Tk à la fin de l'interpréteur plante parfois (0xC0000005) alors que
+        # la vérification a réussi : le résultat est écrit, on quitte sans ce nettoyage pour garder le bon code.
+        import logging
+        logging.shutdown()
+        sys.stdout.flush()
+        os._exit(resultat["code"])
     return resultat["code"]
 
 
