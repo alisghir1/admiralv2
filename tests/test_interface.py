@@ -255,13 +255,19 @@ class Interface(unittest.TestCase):
 
     def test_05_e_dimensions_de_la_commande_non_modifiables(self):
         from admiral.ui.dialogs import AddOfDialog
-        dlg = AddOfDialog(self.root, self.app.depot, "CC4", lignes_sage="CC4-1000", longueur=600, largeur=560,
+        dlg = AddOfDialog(self.root, self.app.depot, "CC4", default_qte=2, lignes_sage="CC4-1000", longueur=600, largeur=560,
                           dimensions_sage=True)
-        self.assertEqual(dlg.longueur_entry.cget("state"), "disabled")
-        self.assertEqual(dlg.largeur_entry.cget("state"), "disabled")
-        self.assertEqual(dlg.epaisseur_entry.cget("state"), "normal", "l'épaisseur n'est pas dans Sage")
-        self.assertEqual(dlg.lire_champs_communs()["longueur"], 600)
+        # Quantité et longueur × largeur : pas de champ, valeurs des lignes de commande ; l'épaisseur reste à saisir
+        self.assertEqual(dlg.qte_entry.master.winfo_manager(), "")
+        self.assertEqual(dlg.longueur_entry.winfo_manager(), "")
+        self.assertEqual(dlg.largeur_entry.winfo_manager(), "")
+        self.assertEqual(dlg.epaisseur_entry.winfo_manager(), "pack", "l'épaisseur n'est pas dans Sage")
+        valeurs = dlg.lire_champs_communs()
+        self.assertEqual((valeurs["qte"], valeurs["longueur"], valeurs["largeur"]), (2, 600, 560))
         dlg.destroy()
+        sans_ligne = AddOfDialog(self.root, self.app.depot, "CC4")   # OF sans ligne : tout se saisit
+        self.assertEqual(sans_ligne.qte_entry.master.winfo_manager(), "grid")
+        sans_ligne.destroy()
         from admiral.domain import sage
         self.assertEqual(sage.dimensions_communes([{"LONG": "600", "LARG": "560"}, {"LONG": "600.0", "LARG": "560"}]), (600, 560))
         self.assertEqual(sage.dimensions_communes([{"LONG": "600", "LARG": "560"}, {"LONG": "600", "LARG": "350"}]), (None, None))
@@ -376,13 +382,19 @@ class Interface(unittest.TestCase):
 
     def test_15_quantite_minimum_a_la_modification(self):
         from admiral.ui.dialogs import ModifierOfDialog
-        of = self.app.recharger_etat().ofs["OF-1001"]
+        # OF saisi sans ligne de commande : sa quantité se modifie, jamais sous les pièces déjà faites
+        id_of = self.app.depot.creer_of("CC2", "MIROIR", "Miroir hors commande", "", 4, "", [("DEC", None)])
+        of = self.app.recharger_etat().ofs[id_of]
         dlg = ModifierOfDialog(self.root, self.app.depot, of, deja_scannees=3)
         dlg.qte_entry.delete(0, "end")
         dlg.qte_entry.insert(0, "2")
         dlg.save()
         self.assertIn("au moins 3", dlg.lbl_erreur.cget("text"))
         dlg.destroy()
+        self.app.depot.supprimer_of(id_of)
+        avec_lignes = ModifierOfDialog(self.root, self.app.depot, self.app.recharger_etat().ofs["OF-1001"], 3)
+        self.assertEqual(avec_lignes.qte_entry.master.winfo_manager(), "", "quantité = somme des lignes")
+        avec_lignes.destroy()
 
     def test_16_annuler_et_reactiver_of(self):
         self.app.notebook.set(self.app.NOM_ONGLET_GENERATION)
