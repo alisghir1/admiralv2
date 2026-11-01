@@ -34,3 +34,10 @@ logs/
 
 # Sauvegardes locales des données (confidentielles)
 sauvegardes/
+
+# Dossier client avec les vraies données (preparer_livraison.py)
+livraison_client/
+
+# Audits citant l'infrastructure du client (serveur Sage) : jamais dans le dépôt public
+AUDIT_SAGE_DIRECT.md
+AUDIT_BASE_DE_DONNEES.md

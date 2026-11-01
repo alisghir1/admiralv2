@@ -1,0 +1,65 @@
+ADMIRAL - Suivi d'atelier
+Installation avec vos données
+=====================================================
+
+1. CONTENU DU DOSSIER
+   Admiral.exe          l'application
+   suivi_atelier.db     la base de données : vos produits, opérations, postes
+                        et gammes ; aucun OF, aucun scan (départ à zéro)
+   data\                le classeur Sage (BASE SAGE ADM.xlsx)
+   LISEZMOI.txt         ce fichier
+   Gardez ces éléments ensemble, dans le même dossier.
+
+2. INSTALLATION SUR UN PC
+   - Copiez le dossier où vous voulez (par exemple C:\Admiral).
+   - Double-cliquez sur Admiral.exe. Le premier démarrage prend quelques secondes.
+   - Si Windows affiche « Windows a protégé votre ordinateur » : cliquez sur
+     « Informations complémentaires » puis « Exécuter quand même ».
+     (L'application n'est pas encore signée numériquement ; ce message est normal.)
+   - L'application demande le poste de ce PC : une machine de l'atelier
+     (DEC1, CHANT2...) ou « Bureau d'étude ». Le code du Bureau d'étude est 0000.
+     Le poste se change ensuite avec le bouton « Changer de poste » en haut à droite.
+
+3. PLUSIEURS PC (Bureau d'étude + postes de l'atelier)
+   Tous les PC doivent travailler sur la MÊME base et le MÊME classeur Sage.
+   - Placez suivi_atelier.db et le dossier data sur un dossier partagé du réseau,
+     par exemple le lecteur Z: dans Z:\Admiral.
+   - Sur chaque PC : copiez Admiral.exe dans un dossier local (C:\Admiral) et créez
+     à côté un fichier config_poste.json contenant (avec la lettre de votre lecteur) :
+
+         {
+           "base_de_donnees": "Z:/Admiral/suivi_atelier.db",
+           "dossier_sage": "Z:/Admiral/data"
+         }
+
+     Écrivez les chemins avec des / (barres obliques), pas des \.
+   - Au premier lancement, l'application demande le poste de ce PC et l'ajoute
+     elle-même à ce fichier.
+
+4. LES COMMANDES SAGE
+   L'application lit les commandes dans le classeur « BASE SAGE ADM.xlsx » du
+   dossier data. Ce classeur est relié à Sage. Pour le mettre à jour :
+     a) ouvrez-le dans Excel, sur un PC qui a accès à Sage ;
+     b) Données > Actualiser tout ;
+     c) ENREGISTREZ le classeur (Ctrl+S). Sans enregistrement, rien ne change.
+   L'application relit le classeur toute seule toutes les 3 minutes ; le bouton
+   « Actualiser Sage » le relit tout de suite. En haut de l'écran,
+   « Sage au ... » indique la date des données.
+   Vous pouvez aussi laisser le classeur là où vous l'utilisez déjà : indiquez
+   alors son dossier dans config_poste.json ("dossier_sage").
+   Les commandes sont recopiées dans la base : une commande livrée disparaît des
+   listes, mais ses OF gardent leur détail. Sage n'est jamais modifié.
+
+5. SAUVEGARDE
+   Toutes vos données (OF, scans) sont dans suivi_atelier.db.
+   Copiez ce fichier régulièrement (une fois par jour, par exemple) sur un autre
+   disque. Avant chaque mise à jour de la base, l'application en fait aussi une
+   copie automatique dans le dossier « sauvegardes ».
+
+6. METTRE À JOUR L'APPLICATION
+   Remplacez seulement Admiral.exe. Ne remplacez JAMAIS suivi_atelier.db :
+   la nouvelle version met la base à jour toute seule au démarrage.
+
+7. EN CAS DE PROBLÈME
+   Envoyez le fichier logs\admiral.log (créé à côté d'Admiral.exe)
+   avec une description de ce que vous faisiez.

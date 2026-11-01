@@ -85,4 +85,6 @@ tests/                   tests automatisés
 | `seed_mock_data.py` / `clean_mock_data.py` | Crée / supprime un jeu de données de test |
 | `clear_atelier.py` | Supprime les OF et les scans, garde le référentiel |
 | `build_exe.bat` | Construit l'exécutable Windows (PyInstaller) |
+| `preparer_livraison.py` | Prépare `livraison_client/Admiral` avec les vraies données (base neuve avec le référentiel, classeur Sage, LISEZMOI) ; il reste à y glisser `Admiral.exe` (GitHub Actions). Ce dossier n'est jamais versionné |
 | `AUDIT_ET_PLAN.md` | Audit et plan de modifications |
+| `docs/Admiral_architecture_base_de_donnees.pdf` | Architecture de la base expliquée au client |
