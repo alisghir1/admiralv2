@@ -292,8 +292,11 @@ class Depot:
                 "SELECT COUNT(*) FROM SageCommandes WHERE Present = 1"):
             return BilanSynchro(ignoree=f"aucune commande lue dans {donnees.source or 'le dossier Sage'}")
 
-        def texte(ligne):  # valeurs non vides seulement : une colonne absente se lit comme vide
-            return json.dumps({k: v for k, v in ligne.items() if v not in (None, "")}, ensure_ascii=False, sort_keys=True)
+        def texte(ligne):
+            # Valeurs non vides seulement : une colonne absente se lit comme vide. Les valeurs en trop d'une ligne CSV
+            # (plus de champs que d'en-têtes) sont rangées par csv sous la clé None : elles n'ont pas de colonne, on les ignore.
+            return json.dumps({k: v for k, v in ligne.items() if isinstance(k, str) and v not in (None, "")},
+                              ensure_ascii=False, sort_keys=True)
 
         maintenant = datetime.now().isoformat(timespec="seconds")
         bilan = BilanSynchro()
@@ -326,6 +329,11 @@ class Depot:
         self.conn.executemany(f"UPDATE {table} SET Present = 0, DateSortie = ? WHERE {cle} = ?",
                               [(maintenant, c) for c in sorties])
         return nouvelles, modifiees, sorties
+
+    def date_source_sage(self):
+        """Date des données Sage de la copie (« AAAA-MM-JJTHH:MM:SS »), ou "" : change quand un poste recopie une lecture plus récente."""
+        lecture = self.conn.execute("SELECT DateSource FROM SageLecture WHERE ID = 1").fetchone()
+        return (lecture[0] or "") if lecture else ""
 
     def charger_sage(self):
         """Commandes Sage de la base (DonneesSage). Seules les commandes et lignes encore dans Sage sont listées ;

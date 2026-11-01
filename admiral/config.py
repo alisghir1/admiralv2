@@ -5,6 +5,7 @@ Clés reconnues dans config_poste.json :
 - "base_de_donnees" : chemin de la base SQLite (facultatif ; défaut : suivi_atelier.db à côté de l'application)
 - "dossier_sage"    : dossier du classeur Sage ou des exports CSV (facultatif ; défaut : data/ à côté de l'application)
 - "code_bureau_etude" : code demandé pour passer ce PC en « Bureau d'étude » (facultatif ; défaut : 0000)
+- "actualisation_sage_minutes" : relecture automatique du dossier Sage (facultatif ; défaut : 3 ; 0 : jamais)
 Un chemin relatif est résolu par rapport au dossier de l'application.
 """
 import json
@@ -26,6 +27,7 @@ ICON_DIR = os.path.join(RESSOURCES_DIR, "assets", "icons")
 # Le Bureau d'étude n'est pas une machine : c'est un mode du PC (pilotage, sans l'écran Atelier)
 POSTE_BUREAU_ETUDE = "Bureau d'étude"
 CODE_BUREAU_ETUDE_DEFAUT = "0000"
+ACTUALISATION_SAGE_MINUTES_DEFAUT = 3
 
 DB_FILE_DEFAUT = os.path.join(APP_DIR, "suivi_atelier.db")
 DATA_DIR_DEFAUT = os.path.join(APP_DIR, "data")
@@ -68,3 +70,11 @@ def dossier_sage(config):
 
 def code_bureau_etude(config):
     return str(config.get("code_bureau_etude") or CODE_BUREAU_ETUDE_DEFAUT)
+
+
+def actualisation_sage_minutes(config):
+    """Intervalle de relecture automatique du dossier Sage, en minutes (0 : pas de relecture automatique)."""
+    try:
+        return max(0.0, float(config.get("actualisation_sage_minutes", ACTUALISATION_SAGE_MINUTES_DEFAUT)))
+    except (TypeError, ValueError):
+        return ACTUALISATION_SAGE_MINUTES_DEFAUT

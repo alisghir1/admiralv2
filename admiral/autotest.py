@@ -13,6 +13,7 @@ DELAI_DEMARRAGE_MS = 1500
 
 def lancer(root, app, resultat):
     """Programme la vérification après l'affichage ; resultat["code"] reçoit 0 ou 1."""
+    from .domain import lecture_sage
     from .ui.dialogs import AddOfDialog, ConfigDialog, HistoriqueDialog, ModifierOfDialog
     from .ui.widgets import get_icon
 
@@ -62,6 +63,18 @@ def lancer(root, app, resultat):
 
             # Retour au poste de départ avant d'ouvrir les fenêtres (aucune configuration n'est écrite)
             passer_en(poste_initial)
+
+            # Relecture automatique de Sage : fichiers lus dans un fil, recopie et écrans dans le fil de l'interface
+            app._lecture_sage.oublier()
+            app._lecture_sage.lancer(app.dossier_sage)
+            app._lecture_sage.attendre(120)
+            lecture = app._lecture_sage.resultat()
+            if isinstance(lecture, Exception) or lecture is lecture_sage.EN_COURS:
+                raise RuntimeError(f"relecture de Sage en arrière-plan : {lecture!r}")
+            app.appliquer_lecture_sage(lecture)
+            app._rafraichir_ecrans_sage("auto-vérification")
+            root.update()
+            log.info("Autotest : relecture automatique de Sage OK (%d commandes)", len(app.sage.entetes))
 
             # Fenêtres en dernier : rien n'est rafraîchi après leur fermeture (sous Windows, traiter les
             # événements d'une fenêtre fermée aussitôt ouverte peut faire planter Tk)

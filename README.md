@@ -6,6 +6,7 @@ Application de suivi d'atelier (MES) pour Sotraglace : commandes Sage → ordres
 
 1. Les commandes Sage sont lues dans `data/` : le classeur Excel relié à Sage (`BASE SAGE ADM.xlsx`, feuilles F-DOCENTETE et F-DOCLIGNE) s'il y en a un, sinon les exports `F-DOCENTETE.csv` et `F-DOCLIGNE.csv`. « Actualiser Sage » relit le dossier.
    Chaque lecture est recopiée dans la base (tables `SageCommandes`, `SageLignes`, `SageLecture`) et les écrans lisent cette copie : tous les postes qui partagent la base voient les mêmes commandes, même sans dossier Sage. Rien n'y est effacé : une commande livrée ou une ligne supprimée dans Sage est marquée sortie et n'est plus listée, mais ses OF gardent le détail de leurs lignes. Un fichier plus ancien que la copie (resté sur un autre poste) n'est pas recopié, ni une lecture vide.
+   Le dossier est relu automatiquement toutes les 3 minutes (`actualisation_sage_minutes`), dans un fil d'arrière-plan et seulement si un fichier a été enregistré entre-temps : il suffit que le client actualise puis **enregistre** le classeur. Les écrans se mettent à jour quand la copie change (par ce poste ou un autre) ; c'est reporté tant qu'une fenêtre est ouverte ou que le Bureau d'étude a des lignes sélectionnées.
 2. Le Bureau d'Étude crée les OF à partir des lignes de commande et choisit leur gamme (opérations et postes).
 3. À chaque poste, l'opérateur scanne le code-barres de l'OF (`OF-1001`) ; l'avancement se calcule par opération.
 
@@ -26,11 +27,12 @@ Lancement : `Lancer_Admiral.command` (macOS), `python suivi_atelier.py` ou `pyth
 {
   "poste": "DEC1 - Découpe Numérique SEKTOR",
   "base_de_donnees": "suivi_atelier.db",
-  "dossier_sage": "data"
+  "dossier_sage": "data",
+  "actualisation_sage_minutes": 3
 }
 ```
 
-Seul `poste` est obligatoire (il est écrit par l'application). `base_de_donnees` et `dossier_sage` sont facultatifs : un chemin relatif part du dossier de l'application. Ils permettent de pointer plusieurs postes vers la même base et le même dossier Sage.
+Seul `poste` est obligatoire (il est écrit par l'application). `base_de_donnees` et `dossier_sage` sont facultatifs : un chemin relatif part du dossier de l'application. Ils permettent de pointer plusieurs postes vers la même base et le même dossier Sage. `actualisation_sage_minutes` aussi (défaut 3 ; 0 : pas de relecture automatique).
 
 Dans le dossier Sage, le classeur `.xlsx` le plus récent qui a les feuilles F-DOCENTETE et F-DOCLIGNE est prioritaire sur les CSV (les autres classeurs, comme le référentiel, sont ignorés). Excel renomme les colonnes (CDE, CODECLI, QTE…) : l'application les ramène aux noms Sage (`COLONNES_CLASSEUR` dans `domain/sage.py`). Un classeur illisible (en cours d'enregistrement) laisse les données déjà lues en place.
 
@@ -50,6 +52,7 @@ admiral/
   domain/etat.py         photo de l'atelier (OF, gammes, scans) chargée en 4 requêtes
   domain/progression.py  règles de scan et d'avancement (sans base ni interface)
   domain/sage.py         lecture du classeur Sage ou des CSV (séparateur , ou ; détecté)
+  domain/lecture_sage.py relecture du dossier Sage en arrière-plan, seulement si un fichier a changé
   domain/referentiel.py  lecture du référentiel Excel (PRODUIT, OPERATION, POSTE, GAMPROD)
   domain/synthese.py     indicateurs de l'onglet Synthèse
   ui/app.py              fenêtre principale : en-tête, onglets, état partagé

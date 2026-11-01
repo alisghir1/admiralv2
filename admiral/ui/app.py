@@ -10,7 +10,7 @@ from .. import config as cfg
 from .. import theme as T
 from ..db import schema
 from ..db.depot import Depot
-from ..domain import sage
+from ..domain import lecture_sage, sage
 from ..journal import journal
 from .administration import AdministrationMixin
 from .atelier import AtelierMixin
@@ -23,6 +23,8 @@ from .synthese import SyntheseMixin
 from .widgets import get_icon
 
 DELAI_RECHERCHE_MS = 250
+DELAI_SUIVI_LECTURE_MS = 500     # relecture automatique de Sage : la lecture en arrière-plan est-elle finie ?
+DELAI_REPORT_ECRANS_MS = 5_000   # écrans occupés (fenêtre ouverte, lignes sélectionnées) : nouvel essai
 
 
 class Onglets(ctk.CTkTabview):
@@ -69,6 +71,8 @@ class SotraglaceApp(AtelierMixin, SyntheseMixin, GenerationOFMixin, MatriceMixin
         self.depot = Depot(schema.ouvrir(cfg.chemin_base(self.config)))
         self.dossier_sage = cfg.dossier_sage(self.config)
         self.sage = sage.DonneesSage()
+        self._lecture_sage = lecture_sage.LectureEnFond()
+        self._ecrans_sage_a_rafraichir = None  # détail du message, quand la mise à jour des écrans est reportée
         self.etat = self.depot.charger_etat()
         self._recherche_timer = None
         journal().info("Démarrage : base %s, données Sage %s", cfg.chemin_base(self.config), self.dossier_sage)
@@ -94,6 +98,7 @@ class SotraglaceApp(AtelierMixin, SyntheseMixin, GenerationOFMixin, MatriceMixin
         self._appliquer_mode()
         self.load_sage_data()
         self.refresh_dashboard()
+        self._planifier_lecture_sage()
 
     # --- État partagé ---
 
@@ -211,8 +216,10 @@ class SotraglaceApp(AtelierMixin, SyntheseMixin, GenerationOFMixin, MatriceMixin
         Sans lecture possible, la copie de la base (faite par ce poste ou un autre) reste utilisée.
         Retourne le bilan de la recopie (BilanSynchro), ou None si une erreur a été signalée."""
         erreur = None
+        empreinte = lecture_sage.signature(self.dossier_sage)  # avant la lecture : un enregistrement pendant sera relu
         try:
             lu = sage.charger(self.dossier_sage)
+            self._lecture_sage.noter(empreinte)
         except sage.SageIllisible as exc:
             # Classeur en cours d'enregistrement ou abîmé : la copie de la base reste en place
             journal().warning("Classeur Sage illisible : %s", exc)
@@ -235,15 +242,90 @@ class SotraglaceApp(AtelierMixin, SyntheseMixin, GenerationOFMixin, MatriceMixin
                 erreur = ("Dossier Sage créé", f"Placez le classeur Sage ou les exports CSV dans {self.dossier_sage}")
             except OSError:
                 erreur = ("Dossier Sage introuvable", self.dossier_sage)
+        self._maj_libelle_sage()
+        if erreur:
+            self._signaler("error", *erreur)
+            return None
+        return bilan
+
+    def _maj_libelle_sage(self):
         if self.sage.date_source:
             self.lbl_sage.configure(text=f"Sage au {datetime.fromisoformat(self.sage.date_source):%d/%m %H:%M}"
                                          f" · {len(self.sage.entetes)} commandes")
         else:
             self.lbl_sage.configure(text="Exports Sage absents")
-        if erreur:
-            self._signaler("error", *erreur)
-            return None
-        return bilan
+
+    # --- Relecture automatique de Sage ---
+
+    def _planifier_lecture_sage(self):
+        minutes = cfg.actualisation_sage_minutes(self.config)
+        if minutes:
+            self._apres(int(minutes * 60_000), self._lecture_sage_auto)
+
+    def _apres(self, delai_ms, fonction):
+        """root.after sans erreur quand la fenêtre est en cours de fermeture."""
+        try:
+            self.root.after(delai_ms, fonction)
+        except tk.TclError:
+            pass
+
+    def _lecture_sage_auto(self):
+        """Relit le dossier Sage en arrière-plan (seulement si un fichier a changé), puis suit la lecture."""
+        self._lecture_sage.lancer(self.dossier_sage)
+        self._suivre_lecture_sage()
+
+    def _suivre_lecture_sage(self):
+        resultat = self._lecture_sage.resultat()
+        if resultat is lecture_sage.EN_COURS:
+            self._apres(DELAI_SUIVI_LECTURE_MS, self._suivre_lecture_sage)
+            return
+        try:
+            self.appliquer_lecture_sage(resultat)
+        except Exception:  # base partagée verrouillée trop longtemps… : la relecture suivante réessaiera
+            journal().exception("Relecture automatique de Sage")
+        self._planifier_lecture_sage()
+
+    def appliquer_lecture_sage(self, resultat):
+        """Recopie dans la base une lecture faite en arrière-plan (résultat de LectureEnFond), puis met les écrans
+        à jour si la copie de la base a changé, par cette lecture ou par un autre poste."""
+        bilan = None
+        if isinstance(resultat, Exception):
+            journal().warning("Relecture automatique de Sage impossible : %s", resultat)
+        elif resultat is not None:
+            bilan = self.depot.synchroniser_sage(resultat)
+            if bilan.ignoree:
+                journal().info("Lecture Sage non recopiée : %s", bilan.ignoree)
+                bilan = None
+            else:
+                journal().info("Sage (relecture automatique) : %s", bilan.resume())
+        if self.depot.date_source_sage() == self.sage.date_source:
+            return  # la copie de la base n'a pas changé
+        self.sage = self.depot.charger_sage()
+        self._maj_libelle_sage()
+        if bilan is None:
+            self._rafraichir_ecrans_sage("copie mise à jour par un autre poste")
+        elif bilan.changements:
+            self._rafraichir_ecrans_sage(bilan.resume())
+
+    def _rafraichir_ecrans_sage(self, detail):
+        """Met les listes à jour sans déranger : reporté tant qu'une fenêtre est ouverte ou que le Bureau d'étude
+        a sélectionné des lignes de commande (la sélection serait perdue)."""
+        occupe = self.root.grab_current() is not None or (self.est_bureau_etude and self.tree_be_sage.selection())
+        if occupe:
+            if self._ecrans_sage_a_rafraichir is None:
+                self._apres(DELAI_REPORT_ECRANS_MS, self._rafraichissement_sage_reporte)
+            self._ecrans_sage_a_rafraichir = detail
+            return
+        self.refresh_dashboard()
+        if self.commande_affichee and not self.est_bureau_etude:
+            self._afficher_commande(self.commande_affichee)
+        if self.est_bureau_etude:  # à l'atelier, le bandeau reste aux scans : seul le libellé Sage change
+            self._signaler("progress", "Commandes Sage mises à jour", f"{len(self.sage.entetes)} commandes · {detail}")
+
+    def _rafraichissement_sage_reporte(self):
+        detail, self._ecrans_sage_a_rafraichir = self._ecrans_sage_a_rafraichir, None
+        if detail is not None:
+            self._rafraichir_ecrans_sage(detail)
 
     def action_refresh(self):
         bilan = self.load_sage_data()

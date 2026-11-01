@@ -1,3 +1,5 @@
+import os
+import tempfile
 import unittest
 
 from admiral.db import schema
@@ -74,6 +76,15 @@ class CopieSage(unittest.TestCase):
         bilan = self.depot.synchroniser_sage(lecture("2026-07-29T09:00:00", {}))
         self.assertTrue(bilan.ignoree)
         self.assertEqual(list(self.depot.charger_sage().entetes), ["CC1", "CC2"])
+
+    def test_ligne_csv_avec_valeurs_en_trop(self):
+        with tempfile.TemporaryDirectory() as d:
+            with open(os.path.join(d, "F-DOCLIGNE.csv"), "w", encoding="utf-8") as f:
+                f.write("DO_Piece,DL_Ligne,DL_Qte\nCC3,1000,2,en trop,encore\n")
+            lu = sage.charger(d)
+        lu.date_source = "2026-07-29T09:00:00"
+        self.assertEqual(self.depot.synchroniser_sage(lu).lignes_nouvelles, ["CC3-1000"])
+        self.assertEqual(self.depot.charger_sage().lignes["CC3-1000"], {"DO_Piece": "CC3", "DL_Ligne": "1000", "DL_Qte": "2"})
 
     def test_migration_cree_les_tables(self):
         tables = {nom for (nom,) in self.depot.conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}

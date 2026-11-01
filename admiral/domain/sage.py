@@ -68,6 +68,11 @@ class BilanSynchro:
     lignes_modifiees: list = field(default_factory=list)
     lignes_sorties: list = field(default_factory=list)
 
+    @property
+    def changements(self):
+        return bool(self.commandes_nouvelles or self.commandes_sorties or self.lignes_nouvelles
+                    or self.lignes_modifiees or self.lignes_sorties)
+
     def resume(self):
         """« 2 nouvelles commandes · 1 sortie de Sage · 3 lignes modifiées », ou « aucun changement »."""
         def compte(liste, singulier, pluriel):
