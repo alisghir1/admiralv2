@@ -207,34 +207,52 @@ class SotraglaceApp(AtelierMixin, SyntheseMixin, GenerationOFMixin, MatriceMixin
     # --- Données Sage ---
 
     def load_sage_data(self):
+        """Lit le dossier Sage, recopie la lecture dans la base, puis charge les commandes depuis la base.
+        Sans lecture possible, la copie de la base (faite par ce poste ou un autre) reste utilisée.
+        Retourne le bilan de la recopie (BilanSynchro), ou None si une erreur a été signalée."""
+        erreur = None
         try:
-            donnees = sage.charger(self.dossier_sage)
+            lu = sage.charger(self.dossier_sage)
         except sage.SageIllisible as exc:
-            # Classeur en cours d'enregistrement ou abîmé : on garde les données déjà lues
+            # Classeur en cours d'enregistrement ou abîmé : la copie de la base reste en place
             journal().warning("Classeur Sage illisible : %s", exc)
-            self._signaler("error", "Classeur Sage illisible", f"{exc} · données précédentes conservées")
-            return False
-        if donnees is None:
+            lu, erreur = None, ("Classeur Sage illisible", f"{exc} · copie précédente conservée")
+        bilan = self.depot.synchroniser_sage(lu) if lu is not None else None
+        if bilan and bilan.ignoree:
+            journal().info("Lecture Sage non recopiée : %s", bilan.ignoree)
+            if not (lu.entetes or lu.lignes):
+                erreur = ("Aucune commande Sage lue", f"{bilan.ignoree} · copie précédente conservée")
+        elif bilan:
+            journal().info("Sage : %d commandes, %d lignes lues (%s) : %s",
+                           len(lu.entetes), len(lu.lignes), lu.source, bilan.resume())
+
+        self.sage = self.depot.charger_sage()
+        if lu is None and erreur is None and self.sage.entetes:
+            bilan = sage.BilanSynchro(ignoree=f"dossier Sage absent : {self.dossier_sage}")  # poste sans fichier
+        elif lu is None and erreur is None:
             try:
                 os.makedirs(self.dossier_sage, exist_ok=True)
-                self._signaler("error", "Dossier Sage créé",
-                               f"Placez le classeur Sage ou les exports CSV dans {self.dossier_sage}")
+                erreur = ("Dossier Sage créé", f"Placez le classeur Sage ou les exports CSV dans {self.dossier_sage}")
             except OSError:
-                self._signaler("error", "Dossier Sage introuvable", self.dossier_sage)
+                erreur = ("Dossier Sage introuvable", self.dossier_sage)
+        if self.sage.date_source:
+            self.lbl_sage.configure(text=f"Sage au {datetime.fromisoformat(self.sage.date_source):%d/%m %H:%M}"
+                                         f" · {len(self.sage.entetes)} commandes")
+        else:
             self.lbl_sage.configure(text="Exports Sage absents")
-            return False
-        self.sage = donnees
-        self.lbl_sage.configure(text=f"Sage lu à {datetime.now():%H:%M} · {len(donnees.entetes)} commandes")
-        journal().info("Sage : %d commandes, %d lignes (%s)", len(donnees.entetes), len(donnees.lignes), donnees.source)
-        return True
+        if erreur:
+            self._signaler("error", *erreur)
+            return None
+        return bilan
 
     def action_refresh(self):
-        lu = self.load_sage_data()
+        bilan = self.load_sage_data()
         self.refresh_dashboard()
         if self.commande_affichee and not self.est_bureau_etude:
             self._afficher_commande(self.commande_affichee)
-        if lu:  # sinon, le message d'erreur de la lecture reste affiché
-            self._signaler("progress", "Données Sage actualisées", f"{len(self.sage.entetes)} commandes lues")
+        if bilan:  # sinon, le message d'erreur de la lecture reste affiché
+            detail = "copie de la base utilisée" if bilan.ignoree else bilan.resume()
+            self._signaler("progress", "Données Sage actualisées", f"{len(self.sage.entetes)} commandes · {detail}")
         if not self.est_bureau_etude:
             self.scan_entry.focus_set()
 

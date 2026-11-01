@@ -136,12 +136,45 @@ def _migration_5_lignes_uniques(conn):
                          [(cle_ligne(cde, c), id_of) for c in lignes.split(",") if c.strip()])
 
 
+def _migration_6_copie_sage(conn):
+    """Copie des commandes Sage dans la base : tous les postes lisent la même copie, et rien n'y est effacé.
+
+    Donnees : la ligne Sage en JSON (noms de colonnes de Sage, valeurs non vides).
+    Present = 0 : la commande ou la ligne n'est plus dans Sage (livrée, facturée ou supprimée) depuis DateSortie ;
+    ses OF gardent ainsi le détail de leurs lignes. SageLecture : la dernière lecture recopiée (une seule ligne)."""
+    conn.executescript('''
+        CREATE TABLE IF NOT EXISTS SageCommandes (
+            DO_Piece TEXT PRIMARY KEY,
+            Donnees TEXT NOT NULL,
+            Present INTEGER NOT NULL DEFAULT 1,
+            DateEntree DATETIME,
+            DateSortie DATETIME
+        );
+        CREATE TABLE IF NOT EXISTS SageLignes (
+            CleLigne TEXT PRIMARY KEY,
+            DO_Piece TEXT NOT NULL,
+            Donnees TEXT NOT NULL,
+            Present INTEGER NOT NULL DEFAULT 1,
+            DateEntree DATETIME,
+            DateSortie DATETIME
+        );
+        CREATE INDEX IF NOT EXISTS idx_sagelignes_piece ON SageLignes (DO_Piece);
+        CREATE TABLE IF NOT EXISTS SageLecture (
+            ID INTEGER PRIMARY KEY CHECK (ID = 1),
+            Source TEXT,
+            DateSource TEXT,
+            DateLecture DATETIME
+        );
+    ''')
+
+
 MIGRATIONS = [
     _migration_1_tables,
     _migration_2_index,
     _migration_3_dimensions,
     _migration_4_suivi,
     _migration_5_lignes_uniques,
+    _migration_6_copie_sage,
 ]
 
 VERSION_SCHEMA = len(MIGRATIONS)

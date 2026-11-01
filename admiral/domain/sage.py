@@ -8,7 +8,7 @@ Dans les deux cas, les lignes sont des dictionnaires de textes avec les noms de 
 import csv
 import os
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, datetime
 
 # Seules les pièces dont le numéro commence par ce préfixe sont des commandes clients
 PREFIXE_COMMANDE = "CC"
@@ -49,12 +49,35 @@ class DonneesSage:
     lignes: dict = field(default_factory=dict)            # "DO_Piece-DL_Ligne" -> ligne CSV
     lignes_par_piece: dict = field(default_factory=dict)  # DO_Piece -> [(clé, ligne CSV)]
     source: str = ""                                      # fichier lu (classeur ou CSV des lignes)
+    date_source: str = ""                                 # enregistrement du fichier, « AAAA-MM-JJTHH:MM:SS »
 
     def lignes_commande(self, do_piece):
         return self.lignes_par_piece.get(do_piece, [])
 
     def client(self, do_piece, defaut="Inconnu"):
         return self.entetes.get(do_piece, {}).get("DO_Tiers", defaut)
+
+
+@dataclass
+class BilanSynchro:
+    """Ce qu'une lecture de Sage a changé dans la copie de la base."""
+    ignoree: str = ""                                     # motif si la lecture n'a pas été recopiée
+    commandes_nouvelles: list = field(default_factory=list)
+    commandes_sorties: list = field(default_factory=list)  # livrées, facturées ou supprimées dans Sage
+    lignes_nouvelles: list = field(default_factory=list)
+    lignes_modifiees: list = field(default_factory=list)
+    lignes_sorties: list = field(default_factory=list)
+
+    def resume(self):
+        """« 2 nouvelles commandes · 1 sortie de Sage · 3 lignes modifiées », ou « aucun changement »."""
+        def compte(liste, singulier, pluriel):
+            return f"{len(liste)} {singulier if len(liste) == 1 else pluriel}" if liste else ""
+        parties = [compte(self.commandes_nouvelles, "nouvelle commande", "nouvelles commandes"),
+                   compte(self.commandes_sorties, "commande sortie de Sage", "commandes sorties de Sage"),
+                   compte(self.lignes_nouvelles, "ligne ajoutée", "lignes ajoutées"),
+                   compte(self.lignes_modifiees, "ligne modifiée", "lignes modifiées"),
+                   compte(self.lignes_sorties, "ligne retirée", "lignes retirées")]
+        return " · ".join(filter(None, parties)) or "aucun changement"
 
 
 def lire_qte(valeur, defaut=1):
@@ -202,14 +225,19 @@ def charger(dossier):
     classeur = _lire_classeur_sage(dossier)
     if classeur:
         source, entetes, lignes = classeur
+        fichiers = [source]
     else:
         chemin_entetes = _premier_existant(dossier, FICHIERS_ENTETES)
         chemin_lignes = _premier_existant(dossier, FICHIERS_LIGNES)
         entetes = _lire_csv(chemin_entetes) if chemin_entetes else []
         lignes = _lire_csv(chemin_lignes) if chemin_lignes else []
         source = chemin_lignes or chemin_entetes or ""
+        fichiers = [chemin for chemin in (chemin_entetes, chemin_lignes) if chemin]
 
-    donnees = DonneesSage(source=source)
+    # Date des données : l'enregistrement du fichier le plus récent (le classeur est enregistré après l'actualisation)
+    enregistrement = max((os.path.getmtime(chemin) for chemin in fichiers), default=None)
+    donnees = DonneesSage(source=source, date_source=datetime.fromtimestamp(enregistrement).isoformat(timespec="seconds")
+                          if enregistrement else "")
 
     for row in entetes:
         do_piece = (row.get('DO_Piece') or '').strip()
@@ -235,15 +263,14 @@ def cle_complete(do_piece, cle):
 
 def lignes_enfants(donnees, do_piece, lignes_sage):
     """Lignes Sage rattachées à un OF : [(clé stockée, quantité, ligne CSV)].
-    Les clés introuvables dans l'export courant sont ignorées."""
+    Les lignes sorties de Sage restent dans donnees.lignes (copie de la base) ; les clés introuvables sont ignorées."""
     if not lignes_sage:
         return []
-    lignes_dict = dict(donnees.lignes_commande(do_piece))
     resultat = []
     for cle in lignes_sage.split(","):
         cle = cle.strip()
-        ligne = lignes_dict.get(cle) or lignes_dict.get(f"{do_piece}-{cle}")
-        if cle and ligne:
+        ligne = donnees.lignes.get(cle_complete(do_piece, cle)) if cle else None
+        if ligne:
             resultat.append((cle, lire_qte(ligne.get("DL_Qte", "1")), ligne))
     return resultat
 

@@ -5,6 +5,7 @@ Application de suivi d'atelier (MES) pour Sotraglace : commandes Sage → ordres
 ## Fonctionnement
 
 1. Les commandes Sage sont lues dans `data/` : le classeur Excel relié à Sage (`BASE SAGE ADM.xlsx`, feuilles F-DOCENTETE et F-DOCLIGNE) s'il y en a un, sinon les exports `F-DOCENTETE.csv` et `F-DOCLIGNE.csv`. « Actualiser Sage » relit le dossier.
+   Chaque lecture est recopiée dans la base (tables `SageCommandes`, `SageLignes`, `SageLecture`) et les écrans lisent cette copie : tous les postes qui partagent la base voient les mêmes commandes, même sans dossier Sage. Rien n'y est effacé : une commande livrée ou une ligne supprimée dans Sage est marquée sortie et n'est plus listée, mais ses OF gardent le détail de leurs lignes. Un fichier plus ancien que la copie (resté sur un autre poste) n'est pas recopié, ni une lecture vide.
 2. Le Bureau d'Étude crée les OF à partir des lignes de commande et choisit leur gamme (opérations et postes).
 3. À chaque poste, l'opérateur scanne le code-barres de l'OF (`OF-1001`) ; l'avancement se calcule par opération.
 
@@ -45,7 +46,7 @@ admiral/
   journal.py             logs/admiral.log
   theme.py               jetons de design : couleurs, polices, espacements, états
   db/schema.py           création et migrations de la base
-  db/depot.py            toutes les requêtes SQL
+  db/depot.py            toutes les requêtes SQL (dont la copie des commandes Sage)
   domain/etat.py         photo de l'atelier (OF, gammes, scans) chargée en 4 requêtes
   domain/progression.py  règles de scan et d'avancement (sans base ni interface)
   domain/sage.py         lecture du classeur Sage ou des CSV (séparateur , ou ; détecté)

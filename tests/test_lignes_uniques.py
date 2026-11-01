@@ -125,7 +125,7 @@ class MigrationCinq(unittest.TestCase):
 
             copies = os.listdir(os.path.join(dossier, "sauvegardes"))
             self.assertEqual(len(copies), 1)
-            self.assertIn("_v4_avant_v5_", copies[0])
+            self.assertIn(f"_v4_avant_v{schema.VERSION_SCHEMA}_", copies[0])
             copie = sqlite3.connect(os.path.join(dossier, "sauvegardes", copies[0]))
             self.assertEqual(schema.version(copie), 4, "la copie est la base d'avant la mise à niveau")
             copie.close()

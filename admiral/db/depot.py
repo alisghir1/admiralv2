@@ -3,7 +3,11 @@
 L'interface ne manipule jamais la connexion directement. Pour passer plus tard à une
 base centrale (serveur), seule cette classe sera à remplacer.
 """
+import json
+from datetime import datetime
+
 from ..domain.etat import OF, EtatAtelier, TOUS_SCANS
+from ..domain.sage import BilanSynchro, DonneesSage, numero_ligne
 from .schema import cle_ligne
 
 
@@ -272,6 +276,73 @@ class Depot:
     def rouvrir_commande(self, cde):
         with self.conn:
             self.conn.execute("DELETE FROM CommandesCloturees WHERE CDE = ?", (cde,))
+
+    # --- Copie des commandes Sage ---
+
+    def synchroniser_sage(self, donnees):
+        """Recopie dans la base une lecture de Sage (DonneesSage) et retourne le bilan (BilanSynchro).
+
+        Rien n'est effacé : ce qui n'est plus dans la lecture est marqué sorti de Sage, et les OF gardent
+        le détail de leurs lignes. Une lecture plus ancienne que la dernière recopiée (fichier périmé sur
+        un autre poste) ou vide alors que la base a des commandes n'est pas recopiée."""
+        derniere = self.conn.execute("SELECT DateSource FROM SageLecture WHERE ID = 1").fetchone()
+        if derniere and derniere[0] and donnees.date_source < derniere[0]:
+            return BilanSynchro(ignoree=f"données Sage du {derniere[0]} déjà dans la base, plus récentes que {donnees.source}")
+        if not donnees.entetes and not donnees.lignes and self._compter(
+                "SELECT COUNT(*) FROM SageCommandes WHERE Present = 1"):
+            return BilanSynchro(ignoree=f"aucune commande lue dans {donnees.source or 'le dossier Sage'}")
+
+        def texte(ligne):  # valeurs non vides seulement : une colonne absente se lit comme vide
+            return json.dumps({k: v for k, v in ligne.items() if v not in (None, "")}, ensure_ascii=False, sort_keys=True)
+
+        maintenant = datetime.now().isoformat(timespec="seconds")
+        bilan = BilanSynchro()
+        with self.conn:
+            bilan.commandes_nouvelles, _, bilan.commandes_sorties = self._recopier(
+                "SageCommandes", ("DO_Piece", "Donnees"),
+                {piece: (piece, texte(entete)) for piece, entete in donnees.entetes.items()}, maintenant)
+            bilan.lignes_nouvelles, bilan.lignes_modifiees, bilan.lignes_sorties = self._recopier(
+                "SageLignes", ("CleLigne", "DO_Piece", "Donnees"),
+                {cle: (cle, piece, texte(ligne)) for piece, lignes in donnees.lignes_par_piece.items()
+                 for cle, ligne in lignes}, maintenant)
+            self.conn.execute("INSERT OR REPLACE INTO SageLecture (ID, Source, DateSource, DateLecture) VALUES (1, ?, ?, ?)",
+                              (donnees.source, donnees.date_source, maintenant))
+        return bilan
+
+    def _recopier(self, table, colonnes, valeurs, maintenant):
+        """valeurs : {clé: valeurs des colonnes (clé en premier, Donnees en dernier)}. Écrit seulement ce qui
+        change ; les clés présentes absentes de valeurs sont marquées sorties. Retourne (nouvelles, modifiées, sorties)."""
+        cle = colonnes[0]
+        actuelles = {c: (texte, present) for c, texte, present in
+                     self.conn.execute(f"SELECT {cle}, Donnees, Present FROM {table}")}
+        nouvelles = [c for c in valeurs if not actuelles.get(c, (None, 0))[1]]  # absentes, ou revenues dans Sage
+        modifiees = [c for c in valeurs if actuelles.get(c, (None, 0))[1] and actuelles[c][0] != valeurs[c][-1]]
+        sorties = [c for c, (_, present) in actuelles.items() if present and c not in valeurs]
+        maj = ", ".join(f"{c} = excluded.{c}" for c in colonnes[1:])
+        self.conn.executemany(
+            f"INSERT INTO {table} ({', '.join(colonnes)}, Present, DateEntree) VALUES ({', '.join('?' * len(colonnes))}, 1, ?) "
+            f"ON CONFLICT({cle}) DO UPDATE SET {maj}, Present = 1, DateSortie = NULL",
+            [(*valeurs[c], maintenant) for c in nouvelles + modifiees])
+        self.conn.executemany(f"UPDATE {table} SET Present = 0, DateSortie = ? WHERE {cle} = ?",
+                              [(maintenant, c) for c in sorties])
+        return nouvelles, modifiees, sorties
+
+    def charger_sage(self):
+        """Commandes Sage de la base (DonneesSage). Seules les commandes et lignes encore dans Sage sont listées ;
+        les lignes sorties restent accessibles par leur clé (donnees.lignes) pour les OF qui les contiennent."""
+        lecture = self.conn.execute("SELECT Source, DateSource FROM SageLecture WHERE ID = 1").fetchone()
+        donnees = DonneesSage(source=lecture[0] or "", date_source=lecture[1] or "") if lecture else DonneesSage()
+        for piece, texte in self.conn.execute("SELECT DO_Piece, Donnees FROM SageCommandes WHERE Present = 1 ORDER BY rowid"):
+            donnees.entetes[piece] = json.loads(texte)
+        for cle, piece, texte, present in self.conn.execute(
+                "SELECT CleLigne, DO_Piece, Donnees, Present FROM SageLignes ORDER BY rowid"):
+            ligne = json.loads(texte)
+            donnees.lignes[cle] = ligne
+            if present:
+                donnees.lignes_par_piece.setdefault(piece, []).append((cle, ligne))
+        for lignes in donnees.lignes_par_piece.values():
+            lignes.sort(key=lambda item: numero_ligne(item[1]))
+        return donnees
 
     # --- Référentiel (administration) ---
 
