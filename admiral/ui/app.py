@@ -207,25 +207,34 @@ class SotraglaceApp(AtelierMixin, SyntheseMixin, GenerationOFMixin, MatriceMixin
     # --- Données Sage ---
 
     def load_sage_data(self):
-        donnees = sage.charger(self.dossier_sage)
+        try:
+            donnees = sage.charger(self.dossier_sage)
+        except sage.SageIllisible as exc:
+            # Classeur en cours d'enregistrement ou abîmé : on garde les données déjà lues
+            journal().warning("Classeur Sage illisible : %s", exc)
+            self._signaler("error", "Classeur Sage illisible", f"{exc} · données précédentes conservées")
+            return False
         if donnees is None:
             try:
                 os.makedirs(self.dossier_sage, exist_ok=True)
-                self._signaler("error", "Dossier Sage créé", f"Placez les exports CSV dans {self.dossier_sage}")
+                self._signaler("error", "Dossier Sage créé",
+                               f"Placez le classeur Sage ou les exports CSV dans {self.dossier_sage}")
             except OSError:
                 self._signaler("error", "Dossier Sage introuvable", self.dossier_sage)
             self.lbl_sage.configure(text="Exports Sage absents")
-            return
+            return False
         self.sage = donnees
         self.lbl_sage.configure(text=f"Sage lu à {datetime.now():%H:%M} · {len(donnees.entetes)} commandes")
-        journal().info("Sage : %d commandes, %d lignes", len(donnees.entetes), len(donnees.lignes))
+        journal().info("Sage : %d commandes, %d lignes (%s)", len(donnees.entetes), len(donnees.lignes), donnees.source)
+        return True
 
     def action_refresh(self):
-        self.load_sage_data()
+        lu = self.load_sage_data()
         self.refresh_dashboard()
         if self.commande_affichee and not self.est_bureau_etude:
             self._afficher_commande(self.commande_affichee)
-        self._signaler("progress", "Données Sage actualisées", f"{len(self.sage.entetes)} commandes lues")
+        if lu:  # sinon, le message d'erreur de la lecture reste affiché
+            self._signaler("progress", "Données Sage actualisées", f"{len(self.sage.entetes)} commandes lues")
         if not self.est_bureau_etude:
             self.scan_entry.focus_set()
 

@@ -3,7 +3,7 @@
 Clés reconnues dans config_poste.json :
 - "poste"           : poste de ce PC, ex. "DEC1 - Découpe Numérique SEKTOR"
 - "base_de_donnees" : chemin de la base SQLite (facultatif ; défaut : suivi_atelier.db à côté de l'application)
-- "dossier_sage"    : dossier des exports CSV Sage (facultatif ; défaut : data/ à côté de l'application)
+- "dossier_sage"    : dossier du classeur Sage ou des exports CSV (facultatif ; défaut : data/ à côté de l'application)
 - "code_bureau_etude" : code demandé pour passer ce PC en « Bureau d'étude » (facultatif ; défaut : 0000)
 Un chemin relatif est résolu par rapport au dossier de l'application.
 """

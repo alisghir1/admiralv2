@@ -4,7 +4,7 @@ Application de suivi d'atelier (MES) pour Sotraglace : commandes Sage → ordres
 
 ## Fonctionnement
 
-1. Sage exporte les commandes dans `data/F-DOCENTETE.csv` et `data/F-DOCLIGNE.csv`.
+1. Les commandes Sage sont lues dans `data/` : le classeur Excel relié à Sage (`BASE SAGE ADM.xlsx`, feuilles F-DOCENTETE et F-DOCLIGNE) s'il y en a un, sinon les exports `F-DOCENTETE.csv` et `F-DOCLIGNE.csv`. « Actualiser Sage » relit le dossier.
 2. Le Bureau d'Étude crée les OF à partir des lignes de commande et choisit leur gamme (opérations et postes).
 3. À chaque poste, l'opérateur scanne le code-barres de l'OF (`OF-1001`) ; l'avancement se calcule par opération.
 
@@ -29,7 +29,9 @@ Lancement : `Lancer_Admiral.command` (macOS), `python suivi_atelier.py` ou `pyth
 }
 ```
 
-Seul `poste` est obligatoire (il est écrit par l'application). `base_de_donnees` et `dossier_sage` sont facultatifs : un chemin relatif part du dossier de l'application. Ils permettent de pointer plusieurs postes vers la même base et le même dossier d'exports Sage.
+Seul `poste` est obligatoire (il est écrit par l'application). `base_de_donnees` et `dossier_sage` sont facultatifs : un chemin relatif part du dossier de l'application. Ils permettent de pointer plusieurs postes vers la même base et le même dossier Sage.
+
+Dans le dossier Sage, le classeur `.xlsx` le plus récent qui a les feuilles F-DOCENTETE et F-DOCLIGNE est prioritaire sur les CSV (les autres classeurs, comme le référentiel, sont ignorés). Excel renomme les colonnes (CDE, CODECLI, QTE…) : l'application les ramène aux noms Sage (`COLONNES_CLASSEUR` dans `domain/sage.py`). Un classeur illisible (en cours d'enregistrement) laisse les données déjà lues en place.
 
 La base est créée et mise à niveau automatiquement au démarrage (version du schéma dans `PRAGMA user_version`). Les erreurs et les scans sont journalisés dans `logs/admiral.log`.
 
@@ -46,7 +48,7 @@ admiral/
   db/depot.py            toutes les requêtes SQL
   domain/etat.py         photo de l'atelier (OF, gammes, scans) chargée en 4 requêtes
   domain/progression.py  règles de scan et d'avancement (sans base ni interface)
-  domain/sage.py         lecture des CSV Sage (séparateur , ou ; détecté)
+  domain/sage.py         lecture du classeur Sage ou des CSV (séparateur , ou ; détecté)
   domain/referentiel.py  lecture du référentiel Excel (PRODUIT, OPERATION, POSTE, GAMPROD)
   domain/synthese.py     indicateurs de l'onglet Synthèse
   ui/app.py              fenêtre principale : en-tête, onglets, état partagé
