@@ -25,9 +25,21 @@ def annotations(sortie, code):
             lignes = [ligne for ligne in bloc.splitlines() if ligne.strip() and not set(ligne) <= {"-"}]
             resultat.append((f"{entete.group(1)} {entete.group(3)}", "\n".join(lignes[-6:])))
     if not resultat:
-        lignes = [ligne for ligne in sortie.splitlines() if ligne.strip()]
-        resultat.append((f"Tests interrompus (code {code})", "\n".join(lignes[-8:])))
+        resultat.append(plantage(sortie, code))
     return resultat
+
+
+def plantage(sortie, code):
+    """Processus arrêté net (plantage de Tk sous Windows) : le test en cours, puis les lignes du projet dans
+    la pile écrite par faulthandler (la plus récente d'abord)."""
+    lignes = [ligne for ligne in sortie.splitlines() if ligne.strip()]
+    fatale = next((i for i, ligne in enumerate(lignes) if "fatal exception" in ligne.lower()), None)
+    if fatale is None:
+        return f"Tests interrompus (code {code})", "\n".join(lignes[-8:])
+    test = re.match(r"(\S+) \((.+?)\) \.\.\.", lignes[fatale])
+    projet = [ligne.strip() for ligne in lignes[fatale + 1:] if re.search(r"[\\/](tests|admiral)[\\/]", ligne)]
+    titre = f"Plantage pendant {test.group(2)}" if test else f"Plantage (code {code})"
+    return titre, "\n".join([lignes[fatale]] + projet[:12])
 
 
 def annoter(titre, message):
@@ -38,7 +50,7 @@ def annoter(titre, message):
 def main():
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     environnement = dict(os.environ, PYTHONIOENCODING="utf-8")
-    execution = subprocess.run([sys.executable, "-m", "unittest", "discover", "-s", "tests", "-t", ".", "-v"],
+    execution = subprocess.run([sys.executable, "-X", "faulthandler", "-m", "unittest", "discover", "-s", "tests", "-t", ".", "-v"],
                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=environnement)
     sortie = execution.stdout.decode("utf-8", errors="replace")
     print(sortie, flush=True)
