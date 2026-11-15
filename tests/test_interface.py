@@ -765,6 +765,7 @@ class Interface(unittest.TestCase):
         self.assertEqual([c for c, _ in self.app.etat.gamme("OF5-01")], ["TRE", "DEC"])
         self.app.depot.supprimer_of("OF5-01")
 
+    @SAUT_WINDOWS_CI   # ouvre des fenêtres : vérifiées par l'auto-vérification de l'exe sous Windows
     def test_28_operation_scannee_non_retirable(self):
         from admiral.ui.dialogs import ModifierOfDialog
         id_of = self.app.depot.creer_of("CC2", "MIROIR", "Miroir", "", 3, "", [("DEC", None), ("FAC", None)])
@@ -802,6 +803,7 @@ class Interface(unittest.TestCase):
         self.assertNotIn(id_nouveau, self.app.cartes, "OF supprimé ailleurs : la carte disparaît")
         self.assertEqual(self.app.cartes["OF1-01"].lbl_design.cget("text"), of.design)
 
+    @SAUT_WINDOWS_CI   # ouvre des fenêtres : vérifiées par l'auto-vérification de l'exe sous Windows
     def test_30_profil_chef_d_atelier(self):
         """Chef d'atelier : code personnel, onglets de pilotage seulement, validation reprise partout."""
         from admiral.config import POSTE_CHEF_ATELIER
@@ -881,6 +883,7 @@ class Interface(unittest.TestCase):
         self.assertNotIn("Validé", self.app.cartes[id_of].lbl_situation.cget("text"))
         self.assertEqual(depot.historique_validations(id_of)[0][8], 1, "annulation gardée dans l'historique")
 
+    @SAUT_WINDOWS_CI   # ouvre des fenêtres : vérifiées par l'auto-vérification de l'exe sous Windows
     def test_26_code_du_bureau_etude(self):
         from admiral.config import POSTE_BUREAU_ETUDE
         from admiral.ui.dialogs import ConfigDialog
