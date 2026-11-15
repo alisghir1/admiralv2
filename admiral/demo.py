@@ -12,13 +12,14 @@ from .db import schema
 from .db.depot import Depot
 
 COMMANDES = [
-    ("CC240001", "MIROITERIE DU NORD"),
-    ("CC240002", "MENUISERIE DU CENTRE"),
-    ("CC240003", "FACADES & VERRES DE L'OUEST"),
-    ("CC240004", "VERANDAS DU SUD"),
-    ("CC240005", "HOTEL LE GRAND"),
-    ("CC240006", "AGENCEMENT BOUTIQUE LUMIERE"),
-    ("CC240007", "CLINIQUE SAINT-PAUL"),
+    # pièce, code client, nom du client (affichés ensemble : « MIROITERIE DU NORD (C0101) »)
+    ("CC240001", "C0101", "MIROITERIE DU NORD"),
+    ("CC240002", "C0102", "MENUISERIE DU CENTRE"),
+    ("CC240003", "C0103", "FACADES & VERRES DE L'OUEST"),
+    ("CC240004", "C0104", "VERANDAS DU SUD"),
+    ("CC240005", "C0105", "HOTEL LE GRAND"),
+    ("CC240006", "C0106", "AGENCEMENT BOUTIQUE LUMIERE"),
+    ("CC240007", "C0107", "CLINIQUE SAINT-PAUL"),
 ]
 
 LIGNES = [
@@ -53,9 +54,9 @@ def creer(dossier, ecraser=False):
 
     jour = date.today().strftime("%d/%m/%Y")
     with open(os.path.join(dossier, "data", "F-DOCENTETE.csv"), "w", encoding="utf-8", newline="") as f:
-        f.write("DO_Piece,DO_Date,DO_Tiers\n")
-        for piece, client in COMMANDES:
-            f.write(f'{piece},{jour},"{client}"\n')
+        f.write("DO_Piece,DO_Date,DO_Tiers,CT_Intitule\n")
+        for piece, code, nom in COMMANDES:
+            f.write(f'{piece},{jour},{code},"{nom}"\n')
     with open(os.path.join(dossier, "data", "F-DOCLIGNE.csv"), "w", encoding="utf-8", newline="") as f:
         f.write("DO_Piece,DL_Ligne,AR_Ref,DL_Design,DL_Qte,LONG,LARG\n")
         for ligne in LIGNES:
@@ -73,7 +74,7 @@ def creer(dossier, ecraser=False):
 
     # CC240001 : un OF en cours au façonnage, un OF bloqué (rien découpé)
     a = depot.creer_of("CC240001", "VITR-4-16-4", "Double Vitrage 4/16/4 Clair", "Intercalaire noir", 5,
-                       "CC240001-1000", vitr, 1200, 800, "4/16/4", dans(3))
+                       "CC240001-1000", vitr, 1200, 800, "", dans(3))
     depot.creer_of("CC240001", "FEUILLE-CLAIR-6", "Verre Trempé 6mm Clair JPP", "", 2,
                        "CC240001-2000", feuille, 2100, 950, "6", dans(3))
     # CC240002 : terminé (découpe et façonnage complets)
@@ -81,12 +82,12 @@ def creer(dossier, ecraser=False):
                        "CC240002-1000", miroir, 1500, 600, "4", dans(1))
     # CC240003 : urgent, découpe commencée ; porte en verre pas démarrée
     e = depot.creer_of("CC240003", "VITR-4-16-4", "Double Vitrage 4/16/4 Gaz Argon", "", 8,
-                       "CC240003-1000", vitr, 1800, 1100, "4/16/4", dans(2), priorite=1)
+                       "CC240003-1000", vitr, 1800, 1100, "", dans(2), priorite=1)
     depot.creer_of("CC240003", "FEUILLE-CLAIR-6", "Porte en Verre Trempé 6mm Securit", "Perçage poignée", 3,
                    "CC240003-2000", feuille, 2040, 830, "6", dans(5))
     # CC240004 : en retard, trempe en cours
     f = depot.creer_of("CC240004", "VITR-4-16-4", "Double Vitrage Véranda", "", 12,
-                       "CC240004-1000", vitr, 1600, 900, "4/16/4", dans(-2))
+                       "CC240004-1000", vitr, 1600, 900, "", dans(-2))
     # CC240005 : commande sans OF (à créer au Bureau d'Étude)
     # CC240006 : une étagère à 4 opérations, un OF annulé
     g = depot.creer_of("CC240006", "FEUILLE-CLAIR-10", "Étagère Verre Trempé 10mm", "Joints plats", 10,

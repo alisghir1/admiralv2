@@ -6,11 +6,11 @@ from tkinter import messagebox
 import customtkinter as ctk
 
 from .. import theme as T
-from ..domain import progression, sage
+from ..domain import progression, sage, tri
 from ..domain.synthese import format_date
 from ..journal import journal
 from .carte_of import CarteOF, VueEtape, VueLigne, VueOF
-from .composants import bouton, carte, champ, defiler_vers, tableau, texte, titre
+from .composants import BandeauCommande, bouton, carte, champ, defiler_vers, menu_tri, tableau, texte, titre
 from .dialogs import HistoriqueDialog
 from .widgets import FenetreDialogue, get_icon, maj_tags_selection
 
@@ -25,7 +25,7 @@ COULEURS_BANDEAU = {
     "warning": (T.ALERTE, T.FOND, T.FOND),
     "default": (T.CARTE, T.TEXTE, T.TEXTE_ATTENUE),
 }
-MESSAGE_ATTENTE = ("Prêt à scanner", "Scannez le code d'un OF (OF-1001) ou d'une commande (CMD-CC240001)")
+MESSAGE_ATTENTE = ("Prêt à scanner", "Scannez le code d'un OF (OF261234-01) ou d'une commande (CMD-CC261234)")
 
 
 class AtelierMixin:
@@ -56,7 +56,7 @@ class AtelierMixin:
         self.lbl_nb_commandes = texte(entete, "", taille=T.TAILLE_CORPS)
         self.lbl_nb_commandes.pack(side=tk.RIGHT)
 
-        self.search_entry = champ(panneau, "Rechercher une commande ou un client")
+        self.search_entry = champ(panneau, "Rechercher : commande, client, réf. client…")
         self.search_entry.pack(fill=tk.X, padx=T.ESPACE_L)
         self.search_entry.bind("<KeyRelease>", self.on_search_change)
 
@@ -67,6 +67,8 @@ class AtelierMixin:
             text_color=T.TEXTE)
         self.filtre_commandes.set("Toutes")
         self.filtre_commandes.pack(fill=tk.X, padx=T.ESPACE_L, pady=T.ESPACE_S)
+        ligne_tri, self.tri_commandes = menu_tri(panneau, tri.TRIS_COMMANDES, self._appliquer_recherche)
+        ligne_tri.pack(fill=tk.X, padx=T.ESPACE_L, pady=(0, T.ESPACE_S))
 
         cadre, self.tree_cmd = tableau(panneau, [
             ("commande", "Commande", 120, "w"), ("client", "Client", 160, "w"),
@@ -79,13 +81,18 @@ class AtelierMixin:
         panneau.grid(row=0, column=1, sticky="nsew", pady=(0, T.ESPACE_S))
 
         entete = ctk.CTkFrame(panneau, fg_color="transparent")
-        entete.pack(fill=tk.X, padx=T.ESPACE_L, pady=(T.ESPACE_L, T.ESPACE_S))
+        entete.pack(fill=tk.X, padx=T.ESPACE_L, pady=(T.ESPACE_L, 0))
         self.lbl_commande = titre(entete, "Aucune commande sélectionnée", taille=T.TAILLE_TITRE)
         self.lbl_commande.pack(side=tk.LEFT)
         self.lbl_client = texte(entete, "", taille=T.TAILLE_SOUS_TITRE, couleur=T.TEXTE)
         self.lbl_client.pack(side=tk.LEFT, padx=(T.ESPACE_M, 0))
         self.lbl_resume = texte(entete, "", taille=T.TAILLE_CORPS)
         self.lbl_resume.pack(side=tk.RIGHT)
+        bloc_tri, self.tri_cartes = menu_tri(entete, tri.TRIS_OF[:-1], self._retrier_cartes, largeur=160)
+        bloc_tri.pack(side=tk.RIGHT, padx=(0, T.ESPACE_L))
+        # Réf. client, délai et observation de Sage (la date de commande ne sert pas à l'atelier)
+        self.bandeau_commande = BandeauCommande(panneau, avec_date=False)
+        self.bandeau_commande.pack(fill=tk.X, padx=T.ESPACE_L, pady=(0, T.ESPACE_S))
 
         self.zone_cartes = ctk.CTkScrollableFrame(panneau, fg_color="transparent", scrollbar_button_color=T.BORDURE,
                                                   scrollbar_button_hover_color=T.BORDURE_SURVOL)
@@ -166,14 +173,14 @@ class AtelierMixin:
     # ===================== Liste des commandes =====================
 
     def _remplir_commandes_atelier(self, commandes):
-        """Commandes dont au moins un OF passe par ce poste, triées En cours > À faire > Terminées."""
+        """Commandes dont au moins un OF passe par ce poste, dans l'ordre choisi (par numéro au départ)."""
         selection = self.tree_cmd.selection()
         for item in self.tree_cmd.get_children():
             self.tree_cmd.delete(item)
         filtre_etat = FILTRES_COMMANDES.get(self.filtre_commandes.get())
         mon_op, codpost = self.get_mon_op(), self.get_codpost()
         lignes = []
-        for do_piece, entete in commandes:
+        for do_piece, _ in commandes:
             if do_piece in self.etat.cloturees:
                 continue  # commande livrée : plus rien à faire en atelier
             scanned, total, pct_str = progression.avancement_commande(self.etat, do_piece, mon_op, codpost)
@@ -182,9 +189,11 @@ class AtelierMixin:
             tag = progression.tag_avancement(scanned, total)
             if filtre_etat and tag != filtre_etat:
                 continue
-            valeurs = (do_piece, entete.get("DO_Tiers", ""), f"{scanned} / {total}", LIBELLES_AVANCEMENT[tag])
+            valeurs = (do_piece, self.sage.client(do_piece, ""), f"{scanned} / {total}", LIBELLES_AVANCEMENT[tag])
             lignes.append((progression.ORDRE_ETATS.get(tag, 1), valeurs, tag))
-        lignes.sort(key=lambda ligne: ligne[0])
+        lignes = tri.trier(lignes, self.tri_commandes.get(), numero=lambda l: l[1][0],
+                           client=lambda l: self.sage.client_pour_tri(l[1][0]),
+                           etat=lambda l: l[0])
         for _, valeurs, tag in lignes:
             self.tree_cmd.insert("", "end", iid=valeurs[0], values=valeurs, tags=(tag,))
         self.lbl_nb_commandes.configure(text=f"{len(lignes)} commande{'s' if len(lignes) > 1 else ''}")
@@ -235,12 +244,21 @@ class AtelierMixin:
 
         etapes = [VueEtape(libelles.get(op, op), self.etat.compter(of.id, op), of.qte, i == index)
                   for i, (op, _) in enumerate(gamme)]
+        validation = self.etat.validation(of.id, mon_op)
+        if validation and self.etat.scans_reels(of.id, mon_op) < of.qte:
+            # Terminé ici par le chef d'atelier, sans scan complet : dit clairement, et plus de +/− possible
+            etat_poste = "valide"
+            situation = f"Validé par {validation.chef} (chef d'atelier) · {validation.motif}"
 
         enfants = sage.lignes_enfants(self.sage, of.cde, of.lignes_sage)
         repartis = progression.repartir_scans(self.etat, of.id, mon_op, enfants)
         lignes = []
         for cle, l_qte, ligne in enfants:
-            details = " · ".join(filter(None, [ligne.get("DL_Design", ""), sage.dimensions(ligne)]))
+            # Chants à poser (« Chants 1H+2L ») et quantité seulement si elle n'est pas en pièces (« 7,6 ML »)
+            chants = sage.chants(ligne)
+            qte_unite = sage.quantite(ligne) if (ligne.get("EU_Enumere") or "U").upper() != "U" else ""
+            details = " · ".join(filter(None, [ligne.get("DL_Design", ""), sage.dimensions(ligne),
+                                               f"Chants {chants}" if chants else "", qte_unite]))
             lignes.append(VueLigne(cle, f"Ligne {ligne.get('DL_Ligne', '')} · {ligne.get('AR_Ref', '')}", details,
                                    l_qte, repartis[cle], progression.statut_ligne(repartis[cle], l_qte)[1]))
 
@@ -260,10 +278,9 @@ class AtelierMixin:
             return
         libelles = self.depot.libelles_operations()
         vues = [v for v in (self._vue_of(of, mon_op, codpost, libelles) for of in self.etat.ofs_par_cde.get(do_piece, [])) if v]
-        # Urgents d'abord, puis par date de besoin (sans date à la fin), puis ordre de création
-        ordre = {v.id: i for i, v in enumerate(vues)}
-        besoins = {of.id: of.date_besoin or "9999" for of in self.etat.ofs_par_cde.get(do_piece, [])}
-        vues.sort(key=lambda v: (not v.urgent, besoins[v.id], ordre[v.id]))
+        besoins = {of.id: of.date_besoin for of in self.etat.ofs_par_cde.get(do_piece, [])}
+        vues = tri.trier(vues, self.tri_cartes.get(), numero=lambda v: v.id, besoin=lambda v: besoins[v.id],
+                         urgent=lambda v: v.urgent)
 
         if not vues:
             raison = "Ce poste n'a pas d'opération configurée." if not mon_op else \
@@ -293,12 +310,17 @@ class AtelierMixin:
         for id_of, carte_of in self.cartes.items():
             carte_of.selectionner(id_of == self.of_selectionne)
 
+    def _retrier_cartes(self):
+        if self.commande_affichee:
+            self.update_lines_view(self.commande_affichee)
+
     def _afficher_commande(self, do_piece):
         if do_piece != self.commande_affichee:
             self.of_selectionne = None
         self.commande_affichee = do_piece
         self.lbl_commande.configure(text=f"Commande {do_piece}")
         self.lbl_client.configure(text=self.sage.client(do_piece, ""))
+        self.bandeau_commande.maj(self.sage.infos_commande(do_piece))
         self.update_lines_view(do_piece)
 
     def selectionner_of(self, id_of):
@@ -316,8 +338,8 @@ class AtelierMixin:
             self.process_scan(qr_text)
 
     def process_scan(self, qr_code):
-        if self.est_bureau_etude:
-            return  # pas de scan au Bureau d'étude (l'écran Atelier n'y est pas affiché)
+        if self.est_pilotage:
+            return  # pas de scan au Bureau d'étude ni au Chef d'atelier (l'écran Atelier n'y est pas affiché)
         qr_code = qr_code.strip().upper()
         self.recharger_etat()
 
@@ -337,7 +359,7 @@ class AtelierMixin:
             self.update_status_bar("progress", f"Commande {do_piece}", self.sage.client(do_piece, ""))
             return
 
-        # Code OF : le code-barres est l'identifiant de l'OF (ex. "OF-1001")
+        # Code OF : le code-barres est l'identifiant de l'OF (ex. "OF261234-01", ou "OF-1001" avant la numérotation par commande)
         of = self.etat.ofs.get(qr_code)
         if not of:
             self.update_status_bar("error", "Code inconnu", f"« {qr_code} » ne correspond à aucun OF ni aucune commande.")
@@ -393,6 +415,8 @@ class AtelierMixin:
             motif = f"{of.id} a été annulé par le Bureau d'étude."
         elif of.cde in self.etat.cloturees:
             motif = f"La commande {of.cde} est clôturée."
+        elif self.etat.validation(of.id, self.get_mon_op()):
+            motif = f"{of.id} a été validé par {self.etat.validation(of.id, self.get_mon_op()).chef} (chef d'atelier) à ce poste."
         else:
             return True
         self.update_status_bar("error", "Action refusée", motif)
@@ -477,7 +501,8 @@ class AtelierMixin:
     def ouvrir_historique(self, id_of):
         of = self.etat.ofs.get(id_of)
         if of:
-            HistoriqueDialog(self.root, of, self.depot.historique_scans(id_of))
+            HistoriqueDialog(self.root, of, self.depot.historique_scans(id_of), self.depot.historique_validations(id_of),
+                             self.depot.libelles_operations())
 
     # ===================== Simulateur =====================
 

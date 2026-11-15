@@ -130,7 +130,7 @@ class EtatAuPoste(unittest.TestCase):
 class Dimensions(unittest.TestCase):
     def test_champs_dedies(self):
         of = OF("OF-1", "CC1", "P", "D", "Intercalaire noir", 1, "", 1200, 800, "4/16/4")
-        self.assertEqual(of.dimensions, "1200 × 800 mm · ép. 4/16/4")
+        self.assertEqual(of.dimensions, "1200 × 800 mm", "l'épaisseur n'est plus affichée")
         self.assertEqual(of.observations, "Intercalaire noir")
 
     def test_ancien_of_dimensions_dans_observations(self):

@@ -1,5 +1,7 @@
 # Fabrique la version Windows d'Admiral sur un serveur Windows de GitHub, la vérifie
-# et la met à disposition (onglet Actions > dernière exécution > Artifacts).
+# et la met à disposition (onglet Actions > dernière exécution > Artifacts) :
+#   Admiral_validation_client : l'exe avec des données de démonstration ;
+#   Admiral_exe : l'exe seul, pour le dossier client préparé par preparer_livraison.py.
 name: Exécutable Windows
 
 on:
@@ -48,3 +50,18 @@ jobs:
           name: Admiral_validation_client
           path: dist/Admiral_validation_client
           retention-days: 30
+
+      # Pour la livraison avec les vraies données : l'exe vérifié ci-dessus et le mode d'installation,
+      # à glisser dans le dossier préparé par preparer_livraison.py (les données ne sont jamais ici)
+      - name: Exécutable seul pour la livraison client
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist/Admiral_exe | Out-Null
+          Copy-Item dist/Admiral.exe dist/Admiral_exe
+          Copy-Item LISEZMOI_INSTALLATION.txt dist/Admiral_exe/LISEZMOI.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Admiral_exe
+          path: dist/Admiral_exe
+          retention-days: 90

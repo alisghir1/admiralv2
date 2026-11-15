@@ -15,24 +15,48 @@ Version de validation (données de démonstration)
    Pour la démonstration, choisissez par exemple « FAC1 - Ligne Façonnage 1 » :
    c'est le poste où l'on voit le plus de cas différents.
    Le poste se change ensuite avec le bouton « Changer de poste » en haut à droite.
+   Deux profils de pilotage, protégés par un code :
+   - « Bureau d'étude » (code 0000) : OF, référentiel et pilotage ;
+   - « Chef d'atelier » : chaque chef a son code personnel (créé dans
+     Administration > Chefs d'atelier ; tant qu'aucun chef n'existe : 1111).
 
 3. CE QU'IL Y A À VALIDER
    Atelier            Commandes du poste, cartes des OF (état, dimensions, compteur,
                       gamme), boutons +1 / Terminer / -1, menu « Plus » (historique).
                       « Simuler un scan » remplace la douchette : cliquez d'abord une carte.
-                      Avec une douchette, scannez un code OF (ex. OF-1000) ou commande
+                      Avec une douchette, scannez un code OF (ex. OF240001-01) ou commande
                       (ex. CMD-CC240001).
+                      Sous le nom de la commande : observation de Sage (en rouge si
+                      ANNULEE ou BLOQUEE, en orange si en attente ou en rupture),
+                      réf. client et délai. Les lignes indiquent les chants à poser
+                      (ex. « Chants 1H+2L »).
    Synthèse           Pièces du jour, OF en cours / terminés / en retard, avancement
                       des commandes (matrice commandes x opérations), état des postes.
    Création d'OF      Commandes Sage, lignes de commande, création, modification,
-                      annulation d'OF, clôture de commande. Une ligne de commande
+                      annulation d'OF, clôture de commande. Chaque OF est numéroté
+                      d'après sa commande : OF240001-01, OF240001-02… pour CC240001.
+                      Une ligne de commande
                       ne peut être que dans un seul OF : la colonne « OF » indique
                       celui qui la contient (annuler l'OF libère ses lignes).
                       « Ajouter à l'OF » complète un OF avec d'autres lignes ;
                       sélectionner une ligne sous un OF permet de la retirer.
                       Les dimensions viennent de la commande Sage (non modifiables).
+                      Sous le titre : observation, réf. client, date de commande et
+                      délai. Colonnes « Chants » et « Qté » avec l'unité (ML, M2).
+                      Les lignes sélectionnées sont totalisées : pièces, m², mètres
+                      de chant. Le délai Sage est rappelé à côté de la date de besoin.
+                      « Modifier » corrige tout l'OF : commande, produit, lignes,
+                      gamme (ajout, retrait, ordre, postes). Ce qui a déjà été
+                      scanné reste protégé.
+   Pilotage           (Chef d'atelier) Commandes et OF avec l'avancement de chaque
+                      étape ; observation, réf. client et délai de la commande. Valider un OF, une étape ou une commande entière, même
+                      sans scan : motif obligatoire, nom du chef enregistré.
+                      Les postes voient aussitôt l'OF « Validé par … ».
+   Validations        Historique des validations (qui, quand, motif) ; une
+                      validation s'annule, l'annulation reste tracée.
    Charge des postes  OF à faire / en cours / terminés par poste.
-   Administration     Produits et gammes, opérations, postes, import Excel.
+   Administration     Produits et gammes, opérations, postes, chefs d'atelier,
+                      import Excel.
 
    Les données sont fictives : vous pouvez tout essayer sans risque.
    Pour repartir de zéro, supprimez suivi_atelier.db et config_poste.json,

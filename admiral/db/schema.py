@@ -168,6 +168,31 @@ def _migration_6_copie_sage(conn):
     ''')
 
 
+def _migration_7_chefs_atelier(conn):
+    # Chefs d'atelier (nom + code d'accès) et validations « forcées » : un chef déclare une étape ou tout un OF
+    # terminé sans scan. Aucun faux scan n'est créé ; une validation s'annule en restant tracée.
+    conn.executescript('''
+        CREATE TABLE IF NOT EXISTS Chefs (
+            Nom TEXT PRIMARY KEY,
+            Code TEXT NOT NULL UNIQUE,
+            DateCreation DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE TABLE IF NOT EXISTS ValidationsChef (
+            ID_Validation INTEGER PRIMARY KEY AUTOINCREMENT,
+            ID_OF TEXT NOT NULL,
+            CodeOp TEXT,                 -- NULL : tout l'OF (toutes les étapes de sa gamme)
+            Chef TEXT NOT NULL,
+            Motif TEXT NOT NULL,
+            Commentaire TEXT,
+            DateValidation DATETIME DEFAULT CURRENT_TIMESTAMP,
+            Annulee INTEGER DEFAULT 0,
+            DateAnnulation DATETIME,
+            AnnuleePar TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_validations_of ON ValidationsChef (ID_OF);
+    ''')
+
+
 MIGRATIONS = [
     _migration_1_tables,
     _migration_2_index,
@@ -175,6 +200,7 @@ MIGRATIONS = [
     _migration_4_suivi,
     _migration_5_lignes_uniques,
     _migration_6_copie_sage,
+    _migration_7_chefs_atelier,
 ]
 
 VERSION_SCHEMA = len(MIGRATIONS)

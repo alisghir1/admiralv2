@@ -39,9 +39,19 @@ class DepotTests(unittest.TestCase):
         self.depot = Depot(schema.ouvrir(":memory:"))
 
     def test_numerotation_des_of(self):
-        self.assertEqual(self.depot.creer_of("CC1", "P", "D", "", 2, "", [("DEC", None)]), "OF-1000")
-        self.depot.conn.execute("INSERT INTO CdeDetail (ID_OF, CDE, Qte) VALUES ('OF-9999', 'X', 1)")
-        self.assertEqual(self.depot.creer_of("CC1", "P", "D", "", 2, "", [("DEC", None)]), "OF-10000")
+        # « OF » + numéro de commande sans « CC » + rang de l'OF dans la commande, sur deux chiffres
+        creer = lambda cde: self.depot.creer_of(cde, "P", "D", "", 2, "", [("DEC", None)])
+        self.assertEqual([creer("CC261234"), creer("CC261234"), creer("CC261235")],
+                         ["OF261234-01", "OF261234-02", "OF261235-01"])
+        # Les OF d'avant (OF-1000…) gardent leur numéro et ne dérangent pas le compteur
+        self.depot.conn.execute("INSERT INTO CdeDetail (ID_OF, CDE, Qte) VALUES ('OF-1000', 'CC261234', 1)")
+        self.assertEqual(creer("CC261234"), "OF261234-03")
+        # Un OF annulé garde son rang ; au-delà de 99 : trois chiffres ; OF1-… et OF12-… ne se mélangent pas
+        self.depot.changer_statut_of("OF261234-03", "annule")
+        self.assertEqual(creer("CC261234"), "OF261234-04")
+        self.depot.conn.execute("INSERT INTO CdeDetail (ID_OF, CDE, Qte) VALUES ('OF261235-99', 'CC261235', 1)")
+        self.assertEqual(creer("CC261235"), "OF261235-100")
+        self.assertEqual([creer("CC1"), creer("CC12"), creer("CC1")], ["OF1-01", "OF12-01", "OF1-02"])
 
     def test_creation_scans_et_etat(self):
         id_of = self.depot.creer_of("CC1", "P", "D", "obs", 4, "CC1-1000", [("DEC", None), ("FAC", "FAC1")])

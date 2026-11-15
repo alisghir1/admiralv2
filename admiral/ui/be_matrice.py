@@ -8,8 +8,8 @@ import tkinter as tk
 import customtkinter as ctk
 
 from .. import theme as T
-from ..domain import progression, sage
-from .composants import MARGE_COLONNE, abreger, carte, polices_tableau, tableau, texte, titre
+from ..domain import progression, sage, tri
+from .composants import MARGE_COLONNE, abreger, carte, menu_tri, polices_tableau, tableau, texte, titre
 from .widgets import apres_inactivite, maj_tags_selection
 
 LEGENDE = "✓ terminé   ◐ en cours   ○ à faire   — hors gamme"
@@ -38,6 +38,8 @@ class MatriceMixin:
         entete.pack(fill=tk.X, padx=T.ESPACE_L, pady=(T.ESPACE_L, 0))
         titre(entete, "Avancement des commandes", taille=T.TAILLE_SOUS_TITRE).pack(side=tk.LEFT)
         texte(entete, LEGENDE, taille=T.TAILLE_LEGENDE).pack(side=tk.RIGHT)
+        bloc_tri, self.tri_matrice = menu_tri(entete, tri.TRIS_COMMANDES, lambda: self.refresh_be_matrice())
+        bloc_tri.pack(side=tk.LEFT, padx=(T.ESPACE_L, 0))
         texte(panneau, "Dépliez une commande pour voir ses OF. Double-clic sur un OF : l'ouvrir.",
               taille=T.TAILLE_LEGENDE).pack(fill=tk.X, padx=T.ESPACE_L, pady=(0, T.ESPACE_S))
 
@@ -69,9 +71,11 @@ class MatriceMixin:
         etat = etat or self.recharger_etat()
 
         operations = self.depot.lister_operations()
-        # Commandes en cours d'abord, puis à faire, puis terminées (ordre de création à état égal)
+        # Ordre choisi (par numéro au départ) ; « État » : en cours, puis à faire, puis terminées
         commandes = [self._donnees_commande(etat, cde, operations) for cde in etat.commandes()]
-        commandes.sort(key=lambda c: progression.ORDRE_ETATS.get(c["tag"], 1))
+        commandes = tri.trier(commandes, self.tri_matrice.get(), numero=lambda c: c["cde"],
+                              client=lambda c: self.sage.client_pour_tri(c["cde"]),
+                              etat=lambda c: progression.ORDRE_ETATS.get(c["tag"], 1))
 
         # Colonnes compactes : chacune à la largeur de son en-tête et de ses cellules les plus longues
         police, police_entete = polices_tableau()
@@ -145,7 +149,7 @@ class MatriceMixin:
         a_des_operations = False
         ofs = []
 
-        for of in etat.ofs_par_cde[cde]:
+        for of in tri.trier(etat.ofs_par_cde[cde], tri.DEFAUT, numero=lambda o: o.id):
             of_ops = [op for op, _ in etat.gamme(of.id)]
             if not of_ops:
                 ofs.append({"of": of, "cellules": ["—"] * len(operations), "tag": "pas_demarre", "lignes": []})
@@ -172,7 +176,8 @@ class MatriceMixin:
                                [cellule(c_scans[r], l_qte) if r in c_scans else "—" for r, _ in operations],
                                progression.tag_etat(sum(c_scans.values()), all(n >= l_qte for n in c_scans.values()))))
             ofs.append({"of": of, "lignes": lignes, "tag": progression.tag_etat(of_scans, of_fini),
-                        "cellules": [cellule(scans_of[r], of.qte) if r in scans_of else "—" for r, _ in operations]})
+                        "cellules": [("✓ validé" if etat.validation(of.id, r) and etat.scans_reels(of.id, r) < of.qte
+                                      else cellule(scans_of[r], of.qte)) if r in scans_of else "—" for r, _ in operations]})
 
         tag = progression.tag_etat(total_scans, tout_fini) if a_des_operations else "pas_demarre"
         return {"cde": cde, "tag": tag, "ofs": ofs,

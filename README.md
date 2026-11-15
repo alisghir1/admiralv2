@@ -4,11 +4,15 @@ Application de suivi d'atelier (MES) pour Sotraglace : commandes Sage → ordres
 
 ## Fonctionnement
 
-1. Les commandes Sage sont lues dans `data/` : le classeur Excel relié à Sage (`BASE SAGE ADM.xlsx`, feuilles F-DOCENTETE et F-DOCLIGNE) s'il y en a un, sinon les exports `F-DOCENTETE.csv` et `F-DOCLIGNE.csv`. « Actualiser Sage » relit le dossier.
+1. Les commandes Sage sont lues dans `data/` : le classeur Excel relié à Sage (`BASE SAGE Admiral.xlsx`, feuilles DOCENTETE et DOCLIGNE, commandes en cours seulement ; l'ancien `BASE SAGE ADM.xlsx`, feuilles F-DOCENTETE et F-DOCLIGNE, est encore lu) s'il y en a un, sinon les exports `F-DOCENTETE.csv` et `F-DOCLIGNE.csv`. « Actualiser Sage » relit le dossier.
    Chaque lecture est recopiée dans la base (tables `SageCommandes`, `SageLignes`, `SageLecture`) et les écrans lisent cette copie : tous les postes qui partagent la base voient les mêmes commandes, même sans dossier Sage. Rien n'y est effacé : une commande livrée ou une ligne supprimée dans Sage est marquée sortie et n'est plus listée, mais ses OF gardent le détail de leurs lignes. Un fichier plus ancien que la copie (resté sur un autre poste) n'est pas recopié, ni une lecture vide.
    Le dossier est relu automatiquement toutes les 3 minutes (`actualisation_sage_minutes`), dans un fil d'arrière-plan et seulement si un fichier a été enregistré entre-temps : il suffit que le client actualise puis **enregistre** le classeur. Les écrans se mettent à jour quand la copie change (par ce poste ou un autre) ; c'est reporté tant qu'une fenêtre est ouverte ou que le Bureau d'étude a des lignes sélectionnées.
 2. Le Bureau d'Étude crée les OF à partir des lignes de commande et choisit leur gamme (opérations et postes).
-3. À chaque poste, l'opérateur scanne le code-barres de l'OF (`OF-1001`) ; l'avancement se calcule par opération.
+3. À chaque poste, l'opérateur scanne le code-barres de l'OF ; l'avancement se calcule par opération.
+   Numéro d'OF : « OF » + numéro de la commande sans « CC » + rang de l'OF dans la commande sur deux chiffres (`OF261234-01`, `OF261234-02`, puis `OF261235-01`…), attribué sous verrou d'écriture (deux PC ne prennent jamais le même). Un OF annulé garde son rang ; un OF supprimé (jamais scanné) libère le sien. Un OF qui change de commande (possible seulement avant tout scan) prend un numéro dans sa nouvelle commande, reporté dans ses gammes, lignes, scans annulés et validations. Les OF créés avant cette numérotation (`OF-1000`…) gardent leur numéro.
+4. Le Chef d'atelier (profil « Chef d'atelier », code personnel) pilote l'atelier et peut valider un OF, une étape ou une commande entière sans scan. Aucun faux scan n'est créé : la validation est enregistrée à part (`ValidationsChef` : chef, date, motif) et comptée comme faite par `EtatAtelier.compter`, donc par tous les écrans. Elle s'annule en restant tracée (onglet Validations). Les chefs et leurs codes se gèrent dans Administration (table `Chefs`) ; tant qu'il n'y en a aucun, le code `code_chef_atelier` (défaut 1111) ouvre l'accès.
+
+Profils d'un PC : poste machine (écran Atelier, douchette), Bureau d'étude (code `code_bureau_etude`, tous les onglets de pilotage) ou Chef d'atelier (Synthèse, Pilotage, Charge des postes, Validations). Chaque PC relit la base toutes les 5 s (`PRAGMA data_version`) : ce qu'un autre poste écrit (OF corrigé, scan, validation) apparaît sans action.
 
 Un scan est refusé si le poste ne fait pas partie de la gamme de l'OF, si la quantité est atteinte, ou si l'étape précédente n'a pas fourni de pièce. Les boutons manuels (« +1 », « TOUT ») permettent de forcer l'avancement : les étapes précédentes sont alors complétées automatiquement.
 
@@ -34,7 +38,7 @@ Lancement : `Lancer_Admiral.command` (macOS), `python suivi_atelier.py` ou `pyth
 
 Seul `poste` est obligatoire (il est écrit par l'application). `base_de_donnees` et `dossier_sage` sont facultatifs : un chemin relatif part du dossier de l'application. Ils permettent de pointer plusieurs postes vers la même base et le même dossier Sage. `actualisation_sage_minutes` aussi (défaut 3 ; 0 : pas de relecture automatique).
 
-Dans le dossier Sage, le classeur `.xlsx` le plus récent qui a les feuilles F-DOCENTETE et F-DOCLIGNE est prioritaire sur les CSV (les autres classeurs, comme le référentiel, sont ignorés). Excel renomme les colonnes (CDE, CODECLI, QTE…) : l'application les ramène aux noms Sage (`COLONNES_CLASSEUR` dans `domain/sage.py`). Un classeur illisible (en cours d'enregistrement) laisse les données déjà lues en place.
+Dans le dossier Sage, le classeur `.xlsx` le plus récent qui a une feuille DOCLIGNE (ou F-DOCLIGNE) est prioritaire sur les CSV (les autres classeurs, comme le référentiel, sont ignorés). Les colonnes du classeur (Commande, CodeCli, Quantité… ou CDE, CODECLI, QTE… dans l'ancien) sont ramenées aux noms Sage (`COLONNES_ENTETES` et `COLONNES_LIGNES` dans `domain/sage.py`) ; l'unité, donnée par son numéro dans Sage, est remise en libellé (U, ML, M2). Les autres données de Sage sont affichées là où elles servent, sans nouvelle colonne dans les listes : sous le titre de la commande (Atelier, Création d'OF, Pilotage ; composant `BandeauCommande`), l'observation en pastille (rouge si annulée ou bloquée, orange si en attente ou en rupture), la réf. client, la date de commande (Création d'OF seulement) et le délai (en rouge s'il est dépassé) ; dans les lignes, les chants notés comme dans les désignations (« 1H+2L », rien si Sage ne les précise pas) et la quantité avec son unité si ce ne sont pas des pièces ; au Bureau d'étude, le total des lignes sélectionnées (pièces, m², mètres de chant) et le délai rappelé à côté de la date de besoin. La recherche des commandes porte aussi sur la réf. client et l'observation. Le client est affiché partout avec son nom et son code (« AGENCEMENTS DU LITTORAL (C0901) » ; pour un client divers, le nom saisi dans « Client Divers ») ; le tri « Client (A → Z) » suit le nom. Un classeur illisible (en cours d'enregistrement) laisse les données déjà lues en place.
 
 La base est créée et mise à niveau automatiquement au démarrage (version du schéma dans `PRAGMA user_version`). Les erreurs et les scans sont journalisés dans `logs/admiral.log`.
 
@@ -55,6 +59,8 @@ admiral/
   domain/lecture_sage.py relecture du dossier Sage en arrière-plan, seulement si un fichier a changé
   domain/referentiel.py  lecture du référentiel Excel (PRODUIT, OPERATION, POSTE, GAMPROD)
   domain/synthese.py     indicateurs de l'onglet Synthèse
+  domain/pilotage.py     avancement et validations du chef d'atelier (onglet Pilotage)
+  domain/tri.py          tri des listes (numéro dans l'ordre naturel, client, état, besoin)
   ui/app.py              fenêtre principale : en-tête, onglets, état partagé
   ui/atelier.py          onglet Atelier : commandes du poste, cartes d'OF, bandeau de scan
   ui/carte_of.py         carte d'un OF (mise à jour sur place)
@@ -62,7 +68,8 @@ admiral/
   ui/be_matrice.py       avancement des commandes (matrice commandes × opérations), dans la Synthèse
   ui/be_charge.py        onglet Charge des postes (colonnes de cartes)
   ui/synthese.py         onglet Synthèse (indicateurs, avancement des commandes, postes)
-  ui/administration.py   onglet Administration (référentiel, import Excel)
+  ui/administration.py   onglet Administration (référentiel, chefs d'atelier, import Excel)
+  ui/pilotage.py         onglets Pilotage et Validations (chef d'atelier), fenêtre de validation
   ui/dialogs.py          choix du poste, nouvel OF, modification d'OF, historique des scans
   ui/composants.py       cartes, pastilles d'état, boutons, tableaux
   ui/widgets.py          icônes, centrage, focus, sélection dans les tableaux

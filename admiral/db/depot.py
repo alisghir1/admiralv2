@@ -7,8 +7,16 @@ import json
 from datetime import datetime
 
 from ..domain.etat import OF, EtatAtelier, TOUS_SCANS
-from ..domain.sage import BilanSynchro, DonneesSage, numero_ligne
+from ..domain.sage import PREFIXE_COMMANDE, BilanSynchro, DonneesSage, numero_ligne
 from .schema import cle_ligne
+
+PREFIXE_OF = "OF"
+
+
+def base_numero_of(cde):
+    """« CC261234 » -> « OF261234 » : le numéro de la commande, sans le préfixe Sage, précédé de « OF »."""
+    numero = cde[len(PREFIXE_COMMANDE):] if cde.startswith(PREFIXE_COMMANDE) else cde
+    return f"{PREFIXE_OF}{numero}"
 
 
 class LigneDejaAffectee(ValueError):
@@ -73,7 +81,8 @@ class Depot:
             "SELECT ID_OF, Poste, Child_Key, COUNT(*) FROM Scans WHERE COALESCE(Annule, 0) = 0 "
             "GROUP BY ID_OF, Poste, Child_Key").fetchall()
         cloturees = [row[0] for row in self.conn.execute("SELECT CDE FROM CommandesCloturees")]
-        return EtatAtelier(ofs, gammes, postes, scans, cloturees)
+        validations = self.validations_actives()
+        return EtatAtelier(ofs, gammes, postes, scans, cloturees, validations)
 
     def creer_of(self, cde, ref_prod, design, observ, qte, lignes_sage, etapes, longueur=None, largeur=None, epaisseur="",
                  date_besoin=None, priorite=0):
@@ -81,14 +90,11 @@ class Depot:
         Lève LigneDejaAffectee si une des lignes Sage appartient déjà à un OF actif (rien n'est créé)."""
         cles = self._cles(cde, lignes_sage)
         with self.conn:
-            # Verrou d'écriture dès la lecture du dernier numéro : deux PC ne peuvent pas prendre le même OF-n
+            # Verrou d'écriture dès la lecture du dernier numéro : deux PC ne peuvent pas prendre le même numéro
             if not self.conn.in_transaction:
                 self.conn.execute("BEGIN IMMEDIATE")
             self._verifier_lignes_libres(cles)
-            # Tri numérique : OF-10000 doit passer après OF-9999
-            dernier = self.conn.execute(
-                "SELECT MAX(CAST(SUBSTR(ID_OF, 4) AS INTEGER)) FROM CdeDetail WHERE ID_OF LIKE 'OF-%'").fetchone()[0]
-            id_of = f"OF-{dernier + 1}" if dernier is not None else "OF-1000"
+            id_of = self._prochain_numero_of(cde)
             self.conn.execute(
                 "INSERT INTO CdeDetail (ID_OF, CDE, PROD, DESIGN, OBSERV, Qte, LignesSage, Longueur, Largeur, Epaisseur, "
                 "Statut, DateBesoin, Priorite) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'actif', ?, ?)",
@@ -98,6 +104,22 @@ class Depot:
                 [(id_of, ordre, code_op, poste) for ordre, (code_op, poste) in enumerate(etapes, start=1)])
             self.conn.executemany("INSERT INTO OF_LignesSage (CleLigne, ID_OF) VALUES (?, ?)", [(c, id_of) for c in cles])
         return id_of
+
+    def _prochain_numero_of(self, cde):
+        """Numéro du prochain OF de la commande : « OF261234-01 », « OF261234-02 »… (rang dans la commande,
+        annulés compris). Les OF d'avant cette numérotation (OF-1000…) gardent leur numéro."""
+        base = f"{base_numero_of(cde)}-"
+        rangs = [int(id_of[len(base):]) for (id_of,) in self.conn.execute(
+                     "SELECT ID_OF FROM CdeDetail WHERE substr(ID_OF, 1, ?) = ?", (len(base), base))
+                 if id_of[len(base):].isdigit()]
+        return f"{base}{max(rangs, default=0) + 1:02d}"
+
+    def _renumeroter_of(self, id_of, cde):
+        """Nouveau numéro dans la commande cde, reporté partout où l'OF est cité. Retourne le nouveau numéro."""
+        nouvel_id = self._prochain_numero_of(cde)
+        for table in ("CdeDetail", "OF_Gammes", "OF_LignesSage", "Scans", "ValidationsChef"):
+            self.conn.execute(f"UPDATE {table} SET ID_OF = ? WHERE ID_OF = ?", (nouvel_id, id_of))
+        return nouvel_id
 
     # --- Lignes Sage des OF (une ligne = un seul OF actif) ---
 
@@ -244,6 +266,88 @@ class Depot:
             self.conn.executemany("UPDATE OF_Gammes SET Poste_Assigne = ? WHERE ID_OF = ? AND Ordre = ?",
                                   [(poste, id_of, ordre) for ordre, poste in postes_par_ordre.items()])
 
+    def scans_valides_of(self, id_of):
+        """({opération: pièces scannées}, {clé de ligne telle que stockée: pièces scannées}) — scans non annulés."""
+        par_op = dict(self.conn.execute(
+            "SELECT Postes.RefOp, COUNT(*) FROM Scans JOIN Postes ON Scans.Poste = Postes.CodPost "
+            "WHERE Scans.ID_OF = ? AND COALESCE(Scans.Annule, 0) = 0 GROUP BY Postes.RefOp", (id_of,)).fetchall())
+        par_ligne = dict(self.conn.execute(
+            "SELECT Child_Key, COUNT(*) FROM Scans WHERE ID_OF = ? AND COALESCE(Annule, 0) = 0 "
+            "AND Child_Key IS NOT NULL GROUP BY Child_Key", (id_of,)).fetchall())
+        return par_op, par_ligne
+
+    def corriger_of(self, id_of, cde, prod, lignes, etapes, design, observ, qte, longueur, largeur, epaisseur,
+                    date_besoin, priorite):
+        """Correction complète d'un OF par le Bureau d'étude : commande, produit, lignes de commande, gamme
+        (opérations, ordre, postes) et tous les champs. lignes : clés des lignes Sage ; etapes : [(CodeOp, poste ou None)].
+
+        Ce qui a déjà été fabriqué est protégé (ValueError, rien n'est enregistré) :
+        - une opération qui a des scans reste dans la gamme ;
+        - une ligne qui a des scans reste dans l'OF ;
+        - un OF déjà scanné ne change pas de commande ;
+        - la quantité ne descend pas sous les pièces déjà passées à une opération.
+        Une ligne prise par un autre OF actif lève LigneDejaAffectee.
+        Un OF qui change de commande prend un numéro dans sa nouvelle commande (son numéro contient celui de la
+        commande) ; seuls les OF d'avant cette numérotation (OF-1000…) gardent le leur. Retourne le numéro de l'OF."""
+        codes = [code for code, _ in etapes]
+        if not codes:
+            raise ValueError("Gardez au moins une opération dans la gamme.")
+        if len(set(codes)) != len(codes):
+            raise ValueError("Une opération ne peut figurer qu'une fois dans la gamme.")
+        with self.conn:
+            if not self.conn.in_transaction:
+                self.conn.execute("BEGIN IMMEDIATE")   # personne ne scanne cet OF pendant la vérification
+            ligne = self.conn.execute(
+                "SELECT CDE, COALESCE(LignesSage, ''), COALESCE(Statut, 'actif') FROM CdeDetail WHERE ID_OF = ?",
+                (id_of,)).fetchone()
+            if ligne is None:
+                raise ValueError(f"{id_of} n'existe plus.")
+            ancienne_cde, anciennes, statut = ligne
+            par_op, par_ligne = self.scans_valides_of(id_of)
+            libelles = self.libelles_operations()
+            for code, nombre in par_op.items():
+                if code not in codes:
+                    raise ValueError(f"L'opération {libelles.get(code, code)} a déjà {nombre} pièce(s) scannée(s) : "
+                                     "elle doit rester dans la gamme (annulez d'abord ces scans à l'atelier).")
+            if cde != ancienne_cde and sum(par_op.values()):
+                raise ValueError(f"{id_of} a déjà des pièces scannées : il ne peut plus changer de commande.")
+            deja = max(par_op.values(), default=0)
+            if qte < max(deja, 1):
+                raise ValueError(f"La quantité doit être d'au moins {max(deja, 1)} (pièces déjà scannées).")
+
+            # Lignes : on garde la clé stockée des lignes conservées (les scans y font référence)
+            jetons_anciens = {cle_ligne(ancienne_cde, j): j.strip() for j in anciennes.split(",") if j.strip()}
+            nouvelles = list(dict.fromkeys(cle_ligne(cde, c) for c in lignes if c.strip()))
+            for complete, jeton in jetons_anciens.items():
+                if complete not in nouvelles and par_ligne.get(jeton):
+                    raise ValueError(f"La ligne {complete.rsplit('-', 1)[-1]} a déjà {par_ligne[jeton]} pièce(s) "
+                                     "scannée(s) : elle doit rester dans l'OF.")
+            jetons = [jetons_anciens.get(c, c) for c in nouvelles]
+            if cde != ancienne_cde and statut != "annule" and id_of.startswith(f"{base_numero_of(ancienne_cde)}-"):
+                id_of = self._renumeroter_of(id_of, cde)
+            if statut == "annule":
+                if set(nouvelles) != set(jetons_anciens) or cde != ancienne_cde:
+                    raise ValueError(f"{id_of} est annulé : réactivez-le avant de changer sa commande ou ses lignes.")
+            else:
+                self._verifier_lignes_libres(nouvelles, sauf_of=id_of)
+                self.conn.execute("DELETE FROM OF_LignesSage WHERE ID_OF = ?", (id_of,))
+                self.conn.executemany("INSERT INTO OF_LignesSage (CleLigne, ID_OF) VALUES (?, ?)",
+                                      [(c, id_of) for c in nouvelles])
+
+            self.conn.execute(
+                "UPDATE CdeDetail SET CDE = ?, PROD = ?, DESIGN = ?, OBSERV = ?, Qte = ?, LignesSage = ?, Longueur = ?, "
+                "Largeur = ?, Epaisseur = ?, DateBesoin = ?, Priorite = ? WHERE ID_OF = ?",
+                (cde, prod, design, observ, qte, ",".join(jetons), longueur, largeur, epaisseur, date_besoin, priorite, id_of))
+            self.conn.execute("DELETE FROM OF_Gammes WHERE ID_OF = ?", (id_of,))
+            self.conn.executemany("INSERT INTO OF_Gammes (ID_OF, Ordre, CodeOp, Poste_Assigne) VALUES (?, ?, ?, ?)",
+                                  [(id_of, ordre, code, poste) for ordre, (code, poste) in enumerate(etapes, start=1)])
+        return id_of
+
+    def version_donnees(self):
+        """Change dès qu'un autre poste (une autre connexion) a écrit dans la base : OF, scans, Sage…
+        Lecture quasi gratuite, faite en boucle pour garder tous les écrans à jour."""
+        return self.conn.execute("PRAGMA data_version").fetchone()[0]
+
     def changer_statut_of(self, id_of, statut):
         """Annuler libère les lignes Sage de l'OF ; réactiver les reprend, et échoue (LigneDejaAffectee)
         si un autre OF les a prises entre-temps."""
@@ -265,7 +369,90 @@ class Depot:
         with self.conn:
             self.conn.execute("DELETE FROM OF_Gammes WHERE ID_OF = ?", (id_of,))
             self.conn.execute("DELETE FROM OF_LignesSage WHERE ID_OF = ?", (id_of,))
+            self.conn.execute("DELETE FROM ValidationsChef WHERE ID_OF = ?", (id_of,))
             self.conn.execute("DELETE FROM CdeDetail WHERE ID_OF = ?", (id_of,))
+
+    # --- Chefs d'atelier et validations forcées ---
+
+    def lister_chefs(self):
+        """[(Nom, Code)] par nom."""
+        return self.conn.execute("SELECT Nom, Code FROM Chefs ORDER BY Nom COLLATE NOCASE").fetchall()
+
+    def chef_par_code(self, code):
+        row = self.conn.execute("SELECT Nom FROM Chefs WHERE Code = ?", (str(code).strip(),)).fetchone()
+        return row[0] if row else None
+
+    def enregistrer_chef(self, nom, code, ancien_nom=None):
+        """Crée ou renomme un chef. Le code est personnel : deux chefs ne peuvent pas avoir le même."""
+        nom, code = nom.strip(), str(code).strip()
+        if not nom or not code:
+            raise ValueError("Le nom et le code sont obligatoires.")
+        if len(code) < 4 or not code.isdigit():
+            raise ValueError("Le code doit comporter au moins 4 chiffres.")
+        autre = self.conn.execute("SELECT Nom FROM Chefs WHERE Code = ? AND Nom <> ?", (code, ancien_nom or nom)).fetchone()
+        if autre:
+            raise ValueError("Ce code est déjà celui d'un autre chef : choisissez-en un autre.")
+        with self.conn:
+            if ancien_nom and ancien_nom != nom:
+                if self.conn.execute("SELECT 1 FROM Chefs WHERE Nom = ?", (nom,)).fetchone():
+                    raise ValueError(f"Un chef s'appelle déjà « {nom} ».")
+                self.conn.execute("UPDATE Chefs SET Nom = ?, Code = ? WHERE Nom = ?", (nom, code, ancien_nom))
+            else:
+                self.conn.execute("INSERT INTO Chefs (Nom, Code) VALUES (?, ?) ON CONFLICT(Nom) DO UPDATE SET Code = excluded.Code",
+                                  (nom, code))
+
+    def supprimer_chef(self, nom):
+        """Ses validations restent dans l'historique, à son nom."""
+        with self.conn:
+            self.conn.execute("DELETE FROM Chefs WHERE Nom = ?", (nom,))
+
+    def validations_actives(self):
+        """[(ID, ID_OF, CodeOp ou None, Chef, Motif, Commentaire, date locale)] non annulées, de la plus ancienne à la plus récente."""
+        return self.conn.execute(
+            "SELECT ID_Validation, ID_OF, CodeOp, Chef, Motif, COALESCE(Commentaire, ''), "
+            "datetime(DateValidation, 'localtime') FROM ValidationsChef WHERE COALESCE(Annulee, 0) = 0 "
+            "ORDER BY ID_Validation").fetchall()
+
+    def valider(self, ids_of, code_op, chef, motif, commentaire=""):
+        """Le chef déclare terminés des OF entiers (code_op None) ou une étape de chacun. Aucun scan n'est créé.
+        Les OF annulés, inconnus ou dont la gamme n'a pas cette étape sont ignorés. Retourne les OF validés."""
+        if not motif:
+            raise ValueError("Choisissez un motif.")
+        valides = []
+        with self.conn:
+            for id_of in dict.fromkeys(ids_of):
+                row = self.conn.execute("SELECT COALESCE(Statut, 'actif') FROM CdeDetail WHERE ID_OF = ?", (id_of,)).fetchone()
+                if not row or row[0] == "annule":
+                    continue
+                if code_op and not self.conn.execute(
+                        "SELECT 1 FROM OF_Gammes WHERE ID_OF = ? AND CodeOp = ?", (id_of, code_op)).fetchone():
+                    continue
+                self.conn.execute(
+                    "INSERT INTO ValidationsChef (ID_OF, CodeOp, Chef, Motif, Commentaire) VALUES (?, ?, ?, ?, ?)",
+                    (id_of, code_op, chef, motif, commentaire.strip()))
+                valides.append(id_of)
+        return valides
+
+    def annuler_validation(self, ids_validation, par):
+        """Annulation tracée : la validation reste dans l'historique, marquée annulée (date et auteur)."""
+        with self.conn:
+            self.conn.executemany(
+                "UPDATE ValidationsChef SET Annulee = 1, DateAnnulation = CURRENT_TIMESTAMP, AnnuleePar = ? "
+                "WHERE ID_Validation = ? AND COALESCE(Annulee, 0) = 0", [(par, i) for i in ids_validation])
+
+    def historique_validations(self, id_of=None, limite=1000):
+        """[(ID, date locale, OF, commande, opération ou None, chef, motif, commentaire, annulée, date d'annulation, annulée par)],
+        de la plus récente à la plus ancienne."""
+        sql = '''SELECT v.ID_Validation, datetime(v.DateValidation, 'localtime'), v.ID_OF, COALESCE(c.CDE, ''), v.CodeOp,
+                        v.Chef, v.Motif, COALESCE(v.Commentaire, ''), COALESCE(v.Annulee, 0),
+                        datetime(v.DateAnnulation, 'localtime'), COALESCE(v.AnnuleePar, '')
+                 FROM ValidationsChef v LEFT JOIN CdeDetail c ON c.ID_OF = v.ID_OF'''
+        params = []
+        if id_of:
+            sql += " WHERE v.ID_OF = ?"
+            params.append(id_of)
+        sql += " ORDER BY v.ID_Validation DESC LIMIT ?"
+        return self.conn.execute(sql, (*params, limite)).fetchall()
 
     # --- Commandes ---
 
@@ -337,11 +524,12 @@ class Depot:
 
     def charger_sage(self):
         """Commandes Sage de la base (DonneesSage). Seules les commandes et lignes encore dans Sage sont listées ;
-        les lignes sorties restent accessibles par leur clé (donnees.lignes) pour les OF qui les contiennent."""
+        les lignes sorties restent accessibles par leur clé (donnees.lignes) pour les OF qui les contiennent,
+        et les commandes sorties (donnees.entetes_sorties) pour afficher le client de ces OF."""
         lecture = self.conn.execute("SELECT Source, DateSource FROM SageLecture WHERE ID = 1").fetchone()
         donnees = DonneesSage(source=lecture[0] or "", date_source=lecture[1] or "") if lecture else DonneesSage()
-        for piece, texte in self.conn.execute("SELECT DO_Piece, Donnees FROM SageCommandes WHERE Present = 1 ORDER BY rowid"):
-            donnees.entetes[piece] = json.loads(texte)
+        for piece, texte, present in self.conn.execute("SELECT DO_Piece, Donnees, Present FROM SageCommandes ORDER BY rowid"):
+            (donnees.entetes if present else donnees.entetes_sorties)[piece] = json.loads(texte)
         for cle, piece, texte, present in self.conn.execute(
                 "SELECT CleLigne, DO_Piece, Donnees, Present FROM SageLignes ORDER BY rowid"):
             ligne = json.loads(texte)

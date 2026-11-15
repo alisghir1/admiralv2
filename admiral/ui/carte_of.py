@@ -15,7 +15,7 @@ ETAPES_PAR_RANGEE = 4  # la frise passe à la ligne au-delà, pour ne jamais dé
 
 COULEUR_SITUATION = {
     "pret": T.INFO_TEXTE, "encours": T.ALERTE_TEXTE, "attente": T.TEXTE_ATTENUE,
-    "bloque": T.ERREUR_TEXTE, "terminee": T.SUCCES_TEXTE, "pas_demarre": T.TEXTE_ATTENUE,
+    "bloque": T.ERREUR_TEXTE, "terminee": T.SUCCES_TEXTE, "valide": T.INFO_TEXTE, "pas_demarre": T.TEXTE_ATTENUE,
 }
 
 
@@ -154,15 +154,16 @@ class CarteOF(ctk.CTkFrame):
         self.lbl_dims.configure(text=vue.dimensions)
         self.lbl_obs.configure(text=vue.observations)
         self.barre.set(min(vue.scans / vue.qte, 1) if vue.qte else 0)
-        self.barre.configure(progress_color=T.SUCCES_VIF if vue.etat == "terminee" else T.ALERTE)
+        termine = vue.etat in ("terminee", "valide")   # valide : terminé par le chef d'atelier, sans scan
+        self.barre.configure(progress_color=T.SUCCES_VIF if termine else T.ALERTE)
         self.lbl_situation.configure(text=vue.situation, text_color=COULEUR_SITUATION.get(vue.etat, T.TEXTE))
-        termine = vue.etat == "terminee"
         self.btn_plus.configure(state="disabled" if termine else "normal")
         self.btn_terminer.configure(state="disabled" if termine else "normal")
-        self.btn_moins.configure(state="normal" if vue.scans else "disabled")
-        self.menu.entryconfigure(2, state="normal" if vue.scans else "disabled")
+        retirable = vue.scans and vue.etat != "valide"
+        self.btn_moins.configure(state="normal" if retirable else "disabled")
+        self.menu.entryconfigure(2, state="normal" if retirable else "disabled")
         self._maj_frise(vue.etapes)
-        self._maj_lignes(vue.lignes, of_termine=termine)
+        self._maj_lignes(vue.lignes, of_termine=termine, verrouille=vue.etat == "valide")
 
     def _maj_frise(self, etapes):
         cles = [(e.libelle, e.ici) for e in etapes]
@@ -191,7 +192,8 @@ class CarteOF(ctk.CTkFrame):
             suffixe = " · ce poste" if etape.ici else ""
             label.configure(text=f"   {prefixe}{etape.libelle} {etape.scans}/{etape.qte}{suffixe}   ", fg_color=fond, text_color=couleur)
 
-    def _maj_lignes(self, lignes, of_termine=False):
+    def _maj_lignes(self, lignes, of_termine=False, verrouille=False):
+        """verrouille : étape validée par le chef d'atelier, plus de −1 sur les lignes."""
         if [l.cle for l in lignes] != list(self._lignes):
             for widget in self.cadre_lignes.winfo_children():
                 widget.destroy()
@@ -206,7 +208,7 @@ class CarteOF(ctk.CTkFrame):
             widgets["pastille"].definir(ligne.etat)
             widgets["compte"].configure(text=f"{ligne.scans} / {ligne.qte}")
             widgets["plus"].configure(state="disabled" if of_termine or ligne.scans >= ligne.qte else "normal")
-            widgets["moins"].configure(state="normal" if ligne.scans else "disabled")
+            widgets["moins"].configure(state="normal" if ligne.scans and not verrouille else "disabled")
 
     def _creer_ligne(self, ligne):
         rangee = ctk.CTkFrame(self.cadre_lignes, fg_color=T.CARTE, corner_radius=T.RAYON_CONTROLE)

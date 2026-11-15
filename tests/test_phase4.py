@@ -165,5 +165,121 @@ class MigrationQuatre(unittest.TestCase):
         self.assertEqual(schema.version(conn), schema.VERSION_SCHEMA)
 
 
+class CorrectionOF(unittest.TestCase):
+    """Le Bureau d'étude corrige tout un OF ; ce qui a été fabriqué reste protégé."""
+
+    def corriger(self, depot, id_of, **changements):
+        valeurs = dict(cde="CC1", prod="P", lignes=[], etapes=[("DEC", None), ("FAC", "FAC1")], design="Vitrage",
+                       observ="", qte=4, longueur=None, largeur=None, epaisseur="", date_besoin=None, priorite=0)
+        valeurs.update(changements)
+        depot.corriger_of(id_of, **valeurs)
+
+    def test_tout_se_corrige_sans_scan(self):
+        depot, ancien = depot_avec_of()
+        # Historique sans pièce comptée : un scan annulé et une validation de chef ; il suit l'OF renuméroté
+        depot.ajouter_scans(ancien, [("DEC1", 1)])
+        depot.annuler_scans(depot.ids_scans(ancien, "DEC"))
+        depot.valider([ancien], "DEC", "Karim", "Test")
+        id_of = depot.corriger_of(ancien, cde="CC2", prod="Q", lignes=["CC2-1000", "2000"], qte=9,
+                                  etapes=[("TRE", "TRE1"), ("DEC", None)], design="Autre", observ="", longueur=None,
+                                  largeur=None, epaisseur="", date_besoin=None, priorite=0)
+        self.assertEqual((ancien, id_of), ("OF1-01", "OF2-01"), "nouvelle commande, nouveau numéro")
+        self.assertNotIn(ancien, depot.charger_etat().ofs)
+        self.assertEqual((len(depot.historique_scans(id_of)), len(depot.historique_validations(id_of))), (1, 1))
+        self.assertEqual((depot.historique_scans(ancien), depot.historique_validations(ancien)), ([], []))
+        of = depot.charger_etat().ofs[id_of]
+        self.assertEqual((of.cde, of.prod, of.qte, of.design, of.lignes_sage), ("CC2", "Q", 9, "Autre", "CC2-1000,CC2-2000"))
+        self.assertEqual(depot.gamme_of(id_of), [(1, "TRE", "TRE1"), (2, "DEC", None)], "opérations, ordre et postes")
+        self.assertEqual(depot.lignes_affectees("CC2"), {"CC2-1000": id_of, "CC2-2000": id_of})
+
+    def test_ce_qui_est_scanne_reste_protege(self):
+        depot, id_of = depot_avec_of()
+        self.corriger(depot, id_of, lignes=["CC1-1000", "CC1-2000"])
+        depot.ajouter_scans(id_of, [("DEC1", 2)], child_key="CC1-1000")
+        for changements, motif in ((dict(etapes=[("FAC", None)]), "Découpe"),
+                                   (dict(cde="CC2", lignes=[]), "commande"),
+                                   (dict(lignes=["CC1-2000"]), "ligne 1000"),
+                                   (dict(qte=1), "au moins 2")):
+            with self.assertRaises(ValueError) as erreur:
+                self.corriger(depot, id_of, **changements)
+            self.assertIn(motif, str(erreur.exception))
+        self.assertEqual(depot.gamme_of(id_of)[0][1], "DEC", "rien n'a été enregistré")
+        # Le reste se corrige : ajout d'une opération, retrait de la ligne non scannée, autre produit
+        self.corriger(depot, id_of, prod="Q", lignes=["CC1-1000"], etapes=[("DEC", None), ("TRE", None), ("FAC", None)])
+        self.assertEqual([c for _, c, _ in depot.gamme_of(id_of)], ["DEC", "TRE", "FAC"])
+        self.assertEqual(depot.lignes_affectees("CC1"), {"CC1-1000": id_of}, "la ligne 2000 est libérée")
+        self.assertEqual(depot.charger_etat().compter(id_of, "DEC"), 2, "les scans restent comptés")
+
+    def test_ligne_d_un_autre_of_et_gamme_invalide(self):
+        from admiral.db.depot import LigneDejaAffectee
+        depot, id_of = depot_avec_of()
+        autre = depot.creer_of("CC1", "P", "D", "", 1, "CC1-3000", [("DEC", None)])
+        with self.assertRaises(LigneDejaAffectee):
+            self.corriger(depot, id_of, lignes=["CC1-3000"])
+        with self.assertRaises(ValueError):
+            self.corriger(depot, id_of, etapes=[])
+        with self.assertRaises(ValueError):
+            self.corriger(depot, id_of, etapes=[("DEC", None), ("DEC", "DEC1")])
+        self.assertEqual(depot.lignes_affectees("CC1"), {"CC1-3000": autre})
+
+
+class ValidationsChef(unittest.TestCase):
+    """Le chef d'atelier déclare des étapes ou des OF entiers terminés, sans scan, de façon traçable."""
+
+    def test_validation_d_une_etape_puis_de_l_of(self):
+        from admiral.domain import pilotage
+        depot, id_of = depot_avec_of()          # 4 pièces, DEC puis FAC
+        depot.ajouter_scans(id_of, [("DEC1", 1)])
+        etat = depot.charger_etat()
+        of = etat.ofs[id_of]
+        self.assertEqual(pilotage.changements(etat, of), [("DEC", 1, 4), ("FAC", 0, 4)])
+        self.assertEqual(depot.valider([id_of], "DEC", "Karim", "Fait sans scan"), [id_of])
+        etat = depot.charger_etat()
+        self.assertEqual((etat.compter(id_of, "DEC"), etat.scans_reels(id_of, "DEC")), (4, 1), "compté fait, pas de faux scan")
+        self.assertFalse(etat.termine(of))
+        ok, motif, _ = progression.verifier_scan(etat, of, "DEC", "DEC1")
+        self.assertFalse(ok)
+        self.assertIn("validé par Karim", motif)
+        self.assertTrue(progression.verifier_scan(etat, of, "FAC", "FAC1")[0], "l'étape suivante peut avancer")
+        depot.valider([id_of], None, "Karim", "Reprise / retouche", "fait à la main")
+        etat = depot.charger_etat()
+        self.assertTrue(etat.termine(of))
+        self.assertTrue(etat.valide_par_chef(of))
+        self.assertEqual(pilotage.etat_of(etat, of), ("Validé", "valide"))
+        self.assertEqual(synthese.calculer(etat, [], {}, {}, date(2026, 10, 1)).of_termines, 1, "synthèse à jour")
+
+    def test_annulation_tracee_et_cas_ignores(self):
+        depot, id_of = depot_avec_of()
+        annule = depot.creer_of("CC1", "P", "D", "", 2, "", [("DEC", None)])
+        depot.changer_statut_of(annule, "annule")
+        self.assertEqual(depot.valider([id_of, annule], "TRE", "Karim", "Autre", "x"), [], "étape absente, OF annulé")
+        with self.assertRaises(ValueError):
+            depot.valider([id_of], None, "Karim", "")
+        depot.valider([id_of], None, "Karim", "Fait sans scan")
+        ids = [v.id for v in depot.charger_etat().validations[id_of]]
+        depot.annuler_validation(ids, "Marc")
+        etat = depot.charger_etat()
+        self.assertFalse(etat.termine(etat.ofs[id_of]))
+        historique = depot.historique_validations(id_of)
+        self.assertEqual((historique[0][5], historique[0][8], historique[0][10]), ("Karim", 1, "Marc"))
+        vierge = depot.creer_of("CC1", "P", "D", "", 1, "", [("DEC", None)])
+        depot.valider([vierge], None, "Karim", "Fait sans scan")
+        depot.supprimer_of(vierge)
+        self.assertEqual(depot.historique_validations(vierge), [], "OF supprimé : ses validations aussi")
+
+    def test_chefs_et_codes(self):
+        depot = Depot(schema.ouvrir(":memory:"))
+        depot.enregistrer_chef("Karim", "4321")
+        with self.assertRaises(ValueError):
+            depot.enregistrer_chef("Marc", "4321")      # code déjà pris
+        with self.assertRaises(ValueError):
+            depot.enregistrer_chef("Marc", "12")        # trop court
+        depot.enregistrer_chef("Karim B.", "9876", ancien_nom="Karim")
+        self.assertEqual(depot.chef_par_code("9876"), "Karim B.")
+        self.assertIsNone(depot.chef_par_code("4321"))
+        depot.supprimer_chef("Karim B.")
+        self.assertEqual(depot.lister_chefs(), [])
+
+
 if __name__ == "__main__":
     unittest.main()

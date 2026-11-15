@@ -23,12 +23,14 @@ def clean():
         cursor = conn.cursor()
         cursor.execute("DELETE FROM Scans")
         cursor.execute("DELETE FROM OF_Gammes")
+        cursor.execute("DELETE FROM OF_LignesSage")
+        cursor.execute("DELETE FROM ValidationsChef")
         cursor.execute("DELETE FROM CdeDetail")
         cursor.execute("DELETE FROM Gammes")
         cursor.execute("DELETE FROM Produits")
         conn.commit()
         conn.close()
-        print("-> Tables Scans, OF_Gammes, CdeDetail, Gammes et Produits vidées.")
+        print("-> Tables Scans, OF_Gammes, OF_LignesSage, ValidationsChef, CdeDetail, Gammes et Produits vidées.")
 
     print("\n[OK] Nettoyage terminé ! Les données de test ont été entièrement supprimées.")
 

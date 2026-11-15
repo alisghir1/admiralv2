@@ -1,6 +1,6 @@
 """Prépare le dossier à envoyer au client avec ses vraies données.
 
-Usage : python preparer_livraison.py [--base suivi_atelier.db] [--classeur "data/BASE SAGE ADM.xlsx"]
+Usage : python preparer_livraison.py [--base suivi_atelier.db] [--classeur "data/BASE SAGE Admiral.xlsx"]
                                      [--sortie livraison_client/Admiral] [--ecraser]
 
 Le dossier reçoit :
@@ -83,8 +83,8 @@ def main():
     parser = argparse.ArgumentParser(description="Prépare le dossier client avec les vraies données.")
     parser.add_argument("--base", default=os.path.join(DOSSIER, "suivi_atelier.db"),
                         help="base dont on reprend le référentiel (défaut : suivi_atelier.db)")
-    parser.add_argument("--classeur", default=os.path.join(DOSSIER, "data", "BASE SAGE ADM.xlsx"),
-                        help="classeur Sage à livrer (défaut : data/BASE SAGE ADM.xlsx)")
+    parser.add_argument("--classeur", default=os.path.join(DOSSIER, "data", "BASE SAGE Admiral.xlsx"),
+                        help="classeur Sage à livrer (défaut : data/BASE SAGE Admiral.xlsx)")
     parser.add_argument("--sortie", default=os.path.join(DOSSIER, "livraison_client", "Admiral"),
                         help="dossier à créer (défaut : livraison_client/Admiral)")
     parser.add_argument("--ecraser", action="store_true", help="refait le dossier s'il existe")

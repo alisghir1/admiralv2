@@ -5,6 +5,8 @@ Clés reconnues dans config_poste.json :
 - "base_de_donnees" : chemin de la base SQLite (facultatif ; défaut : suivi_atelier.db à côté de l'application)
 - "dossier_sage"    : dossier du classeur Sage ou des exports CSV (facultatif ; défaut : data/ à côté de l'application)
 - "code_bureau_etude" : code demandé pour passer ce PC en « Bureau d'étude » (facultatif ; défaut : 0000)
+- "chef_atelier"    : nom du chef d'atelier connecté sur ce PC (écrit par l'application)
+- "code_chef_atelier" : code d'accès « Chef d'atelier » tant qu'aucun chef n'est créé dans Administration (défaut : 1111)
 - "actualisation_sage_minutes" : relecture automatique du dossier Sage (facultatif ; défaut : 3 ; 0 : jamais)
 Un chemin relatif est résolu par rapport au dossier de l'application.
 """
@@ -27,6 +29,10 @@ ICON_DIR = os.path.join(RESSOURCES_DIR, "assets", "icons")
 # Le Bureau d'étude n'est pas une machine : c'est un mode du PC (pilotage, sans l'écran Atelier)
 POSTE_BUREAU_ETUDE = "Bureau d'étude"
 CODE_BUREAU_ETUDE_DEFAUT = "0000"
+# Chef d'atelier : pilotage de l'atelier et validation des OF sans scan, avec un code personnel par chef
+POSTE_CHEF_ATELIER = "Chef d'atelier"
+CODE_CHEF_ATELIER_DEFAUT = "1111"   # seulement tant qu'aucun chef n'est enregistré (premier accès)
+CHEF_PAR_DEFAUT = "Chef d'atelier"
 ACTUALISATION_SAGE_MINUTES_DEFAUT = 3
 
 DB_FILE_DEFAUT = os.path.join(APP_DIR, "suivi_atelier.db")
@@ -70,6 +76,10 @@ def dossier_sage(config):
 
 def code_bureau_etude(config):
     return str(config.get("code_bureau_etude") or CODE_BUREAU_ETUDE_DEFAUT)
+
+
+def code_chef_atelier(config):
+    return str(config.get("code_chef_atelier") or CODE_CHEF_ATELIER_DEFAUT)
 
 
 def actualisation_sage_minutes(config):

@@ -67,6 +67,49 @@ class Pastille(ctk.CTkLabel):
         self.configure(text=f"   {libelle}   ", fg_color=fond, text_color=couleur)
 
 
+# Niveau de l'observation Sage -> (fond, texte) de sa pastille
+COULEURS_OBSERVATION = {
+    "bloque": (T.ERREUR_FOND, T.ERREUR_TEXTE),
+    "alerte": (T.ALERTE_FOND, T.ALERTE_TEXTE),
+    "info": (T.NEUTRE_FOND, T.NEUTRE_TEXTE),
+}
+
+
+class BandeauCommande(ctk.CTkFrame):
+    """Contexte Sage d'une commande, sur une ligne discrète sous son titre : observation de Sage en pastille,
+    en tête car elle peut arrêter la production (« ANNULEE », « EN ATTENTE MESURE ») et ne doit jamais être
+    coupée sur un petit écran ; puis réf. client, date de commande et délai (en rouge, avec le mot « dépassé »,
+    s'il est passé). La ligne garde sa hauteur même vide : rien ne saute d'une commande à l'autre."""
+
+    def __init__(self, parent, avec_date=True, **kwargs):
+        super().__init__(parent, fg_color="transparent", height=26, **kwargs)
+        self.avec_date = avec_date
+        self.lbl_contexte = texte(self, "", height=26)
+        self.lbl_contexte.pack(side=tk.LEFT)
+        self.lbl_delai = texte(self, "", height=26)
+        self.lbl_delai.pack(side=tk.LEFT)
+        self.pastille = ctk.CTkLabel(self, text="", height=26, corner_radius=13, font=T.police(T.TAILLE_LEGENDE, gras=True))
+        self.observations = ""
+
+    def maj(self, infos=None):
+        """infos : InfosCommande de la commande affichée, ou None pour vider la ligne."""
+        contexte, delai, depasse = infos.textes(self.avec_date) if infos else ("", "", False)
+        self.lbl_contexte.configure(text=contexte)
+        self.lbl_delai.configure(text=delai, text_color=T.ERREUR_TEXTE if depasse else T.TEXTE_ATTENUE,
+                                 font=T.police(T.TAILLE_CORPS, gras=depasse))
+        self.observations = infos.observations if infos else ""
+        self.pastille.pack_forget()
+        if self.observations:
+            fond, couleur = COULEURS_OBSERVATION[infos.niveau]
+            self.pastille.configure(text=f"   {self.observations}   ", fg_color=fond, text_color=couleur)
+            self.pastille.pack(side=tk.LEFT, padx=(0, T.ESPACE_M), before=self.lbl_contexte)
+
+    @property
+    def texte_affiche(self):
+        """Texte complet de la ligne (tests et auto-vérification)."""
+        return " ".join(filter(None, (self.observations, self.lbl_contexte.cget("text") + self.lbl_delai.cget("text"))))
+
+
 def configurer_styles_ttk(root):
     """Tableaux ttk accordés au thème. "Atelier.Treeview" : lignes plus hautes pour l'écran opérateur."""
     style = ttk.Style(root)
@@ -127,6 +170,20 @@ def tableau(parent, colonnes, style="Treeview", hauteur=None, selection="browse"
         tree.column("#0", width=36, stretch=False)
     configurer_tags_etats(tree)
     return cadre, tree
+
+
+def menu_tri(parent, choix, commande, largeur=170):
+    """« Trier par » + menu déroulant. Retourne (cadre, menu) ; menu.get() donne le tri choisi.
+    commande() est appelée sans argument à chaque changement."""
+    cadre = ctk.CTkFrame(parent, fg_color="transparent")
+    texte(cadre, "Trier par").pack(side=tk.LEFT)
+    menu = ctk.CTkOptionMenu(
+        cadre, values=list(choix), command=lambda _: commande(), height=32, width=largeur,
+        corner_radius=T.RAYON_CONTROLE, font=T.police(T.TAILLE_CORPS, gras=True), dropdown_font=T.police(T.TAILLE_CORPS),
+        fg_color=T.SURFACE, button_color=T.BORDURE, button_hover_color=T.BORDURE_SURVOL, text_color=T.TEXTE)
+    menu.set(choix[0])
+    menu.pack(side=tk.LEFT, padx=(T.ESPACE_S, 0))
+    return cadre, menu
 
 
 MARGE_COLONNE = 20   # marges intérieures d'une cellule ou d'un en-tête de tableau (px)

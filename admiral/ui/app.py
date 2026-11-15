@@ -6,7 +6,7 @@ from tkinter import ttk
 
 import customtkinter as ctk
 
-from .. import config as cfg
+from .. import __version__, config as cfg
 from .. import theme as T
 from ..db import schema
 from ..db.depot import Depot
@@ -19,10 +19,12 @@ from .be_generation import GenerationOFMixin
 from .be_matrice import MatriceMixin
 from .composants import bouton, configurer_styles_ttk, texte
 from .dialogs import ConfigDialog
+from .pilotage import PilotageMixin
 from .synthese import SyntheseMixin
 from .widgets import get_icon
 
 DELAI_RECHERCHE_MS = 250
+SURVEILLANCE_BASE_MS = 5000   # les écritures des autres postes (OF corrigé, scans…) apparaissent ici en 5 s au plus
 DELAI_SUIVI_LECTURE_MS = 500     # relecture automatique de Sage : la lecture en arrière-plan est-elle finie ?
 DELAI_REPORT_ECRANS_MS = 5_000   # écrans occupés (fenêtre ouverte, lignes sélectionnées) : nouvel essai
 
@@ -51,7 +53,8 @@ class Onglets(ctk.CTkTabview):
             pass
 
 
-class SotraglaceApp(AtelierMixin, SyntheseMixin, GenerationOFMixin, MatriceMixin, ChargeMixin, AdministrationMixin):
+class SotraglaceApp(AtelierMixin, SyntheseMixin, GenerationOFMixin, MatriceMixin, ChargeMixin, AdministrationMixin,
+                    PilotageMixin):
     """Application. Les écrans sont des mixins qui partagent :
     - self.depot : accès à la base (toutes les requêtes SQL)
     - self.sage  : données Sage (DonneesSage)
@@ -63,6 +66,9 @@ class SotraglaceApp(AtelierMixin, SyntheseMixin, GenerationOFMixin, MatriceMixin
     NOM_ONGLET_GENERATION = "Création d'OF"
     NOM_ONGLET_CHARGE = "Charge des postes"
     NOM_ONGLET_ADMIN = "Administration"
+    NOM_ONGLET_PILOTAGE = "Pilotage"
+    NOM_ONGLET_VALIDATIONS = "Validations"
+    ONGLETS_BUREAU_ETUDE = (NOM_ONGLET_GENERATION, NOM_ONGLET_ADMIN)   # masqués au Chef d'atelier
 
     def __init__(self, root, poste=None):
         """poste : impose le poste sans le demander ni l'enregistrer (auto-vérification)."""
@@ -77,9 +83,10 @@ class SotraglaceApp(AtelierMixin, SyntheseMixin, GenerationOFMixin, MatriceMixin
         self._recherche_timer = None
         journal().info("Démarrage : base %s, données Sage %s", cfg.chemin_base(self.config), self.dossier_sage)
 
+        self.chef_actuel = self.config.get('chef_atelier') or cfg.CHEF_PAR_DEFAUT
         self.poste_actuel = poste or self.load_config()
 
-        self.root.title("Admiral · Suivi d'atelier Sotraglace")
+        self.root.title(f"Admiral {__version__} · Suivi d'atelier Sotraglace")   # version visible : bonne livraison
         self.root.geometry("1366x820")
         self.root.minsize(1180, 720)
         def _maximize_safe():
@@ -99,6 +106,8 @@ class SotraglaceApp(AtelierMixin, SyntheseMixin, GenerationOFMixin, MatriceMixin
         self.load_sage_data()
         self.refresh_dashboard()
         self._planifier_lecture_sage()
+        self._version_base = self.depot.version_donnees()
+        self._apres(SURVEILLANCE_BASE_MS, self._surveiller_base)
 
     # --- État partagé ---
 
@@ -111,9 +120,32 @@ class SotraglaceApp(AtelierMixin, SyntheseMixin, GenerationOFMixin, MatriceMixin
     def est_bureau_etude(self):
         return self.poste_actuel == cfg.POSTE_BUREAU_ETUDE
 
+    @property
+    def est_chef(self):
+        return self.poste_actuel == cfg.POSTE_CHEF_ATELIER
+
+    @property
+    def est_pilotage(self):
+        """PC de pilotage (Bureau d'étude ou Chef d'atelier) : onglets, pas de douchette ni d'écran Atelier."""
+        return self.est_bureau_etude or self.est_chef
+
+    @property
+    def signataire(self):
+        """Nom inscrit sur les validations faites depuis ce PC."""
+        return self.chef_actuel if self.est_chef else cfg.POSTE_BUREAU_ETUDE
+
+    def _chef_par_code(self, code):
+        """Chef reconnu par son code. Tant qu'aucun chef n'est créé (Administration), le code par défaut ouvre l'accès."""
+        nom = self.depot.chef_par_code(code)
+        if nom is None and not self.depot.lister_chefs() and code == cfg.code_chef_atelier(self.config):
+            nom = cfg.CHEF_PAR_DEFAUT
+        return nom
+
     def _signaler(self, type_message, message, detail=""):
-        """Message à l'utilisateur : bandeau de scan à l'atelier, ligne d'information au Bureau d'étude."""
-        if self.est_bureau_etude:
+        """Message à l'utilisateur : bandeau de scan à l'atelier, ligne d'information au pilotage."""
+        if self.est_chef:
+            self._message_pilotage(f"{message} · {detail}" if detail else message)
+        elif self.est_pilotage:
             self._message_be(f"{message} · {detail}" if detail else message)
         else:
             self.update_status_bar(type_message, message, detail)
@@ -147,14 +179,14 @@ class SotraglaceApp(AtelierMixin, SyntheseMixin, GenerationOFMixin, MatriceMixin
             return None
 
     def _refocus_scan_si_libre(self):
-        if not self.est_bureau_etude and not self._est_champ_saisie(self._focus_actuel()):
+        if not self.est_pilotage and not self._est_champ_saisie(self._focus_actuel()):
             self.scan_entry.focus_set()
 
     def force_focus(self, event):
         # La douchette tape comme un clavier : un caractère tapé hors d'un champ de saisie part au scan.
         # Ce premier caractère a déjà été livré au widget précédent : on le recopie pour ne pas le perdre.
         # Les touches sans caractère (flèches, Tab…) restent au widget qui a le focus.
-        if self.est_bureau_etude or self._est_champ_saisie(self._focus_actuel()):
+        if self.est_pilotage or self._est_champ_saisie(self._focus_actuel()):
             return  # au Bureau d'étude, pas de douchette : le clavier reste à l'utilisateur
         if event.char and event.char.isprintable():
             self.scan_entry.focus_set()
@@ -166,28 +198,37 @@ class SotraglaceApp(AtelierMixin, SyntheseMixin, GenerationOFMixin, MatriceMixin
         poste = self.config.get('poste')
         if poste:
             return poste
-        dialog = ConfigDialog(self.root, self.libelles_postes(), code_bureau_etude=cfg.code_bureau_etude(self.config))
+        dialog = ConfigDialog(self.root, self.libelles_postes(), code_bureau_etude=cfg.code_bureau_etude(self.config),
+                              chef_par_code=self._chef_par_code)
         self.root.wait_window(dialog)
         poste = dialog.result
-        cfg.ecrire_config({'poste': poste})
-        self.config['poste'] = poste
+        self._memoriser_poste(poste, dialog.chef)
         return poste
+
+    def _memoriser_poste(self, poste, chef=None):
+        valeurs = {'poste': poste}
+        if poste == cfg.POSTE_CHEF_ATELIER:
+            valeurs['chef_atelier'] = chef
+            self.chef_actuel = chef
+        cfg.ecrire_config(valeurs)
+        self.config.update(valeurs)
 
     def change_poste(self):
         dialog = ConfigDialog(self.root, self.libelles_postes(), is_cancellable=True, actuel=self.poste_actuel,
-                              code_bureau_etude=cfg.code_bureau_etude(self.config))
+                              code_bureau_etude=cfg.code_bureau_etude(self.config), chef_par_code=self._chef_par_code)
         self.root.wait_window(dialog)
 
-        if dialog.result and dialog.result != self.poste_actuel:
+        autre_chef = dialog.result == cfg.POSTE_CHEF_ATELIER and dialog.chef != self.chef_actuel
+        if dialog.result and (dialog.result != self.poste_actuel or autre_chef):
             self.poste_actuel = dialog.result
-            cfg.ecrire_config({'poste': self.poste_actuel})
-            journal().info("Changement de poste : %s", self.poste_actuel)
+            self._memoriser_poste(self.poste_actuel, dialog.chef)
+            journal().info("Changement de poste : %s%s", self.poste_actuel, f" ({dialog.chef})" if dialog.chef else "")
             self._maj_entete_poste()
             self._appliquer_mode()
             self.refresh_dashboard()
-            if self.commande_affichee and not self.est_bureau_etude:
+            if self.commande_affichee and not self.est_pilotage:
                 self._afficher_commande(self.commande_affichee)
-        elif not self.est_bureau_etude:
+        elif not self.est_pilotage:
             self.scan_entry.focus_set()
 
     def _appliquer_mode(self):
@@ -195,10 +236,11 @@ class SotraglaceApp(AtelierMixin, SyntheseMixin, GenerationOFMixin, MatriceMixin
         Poste machine : l'écran Atelier seul, douchette active.
         Les deux écrans existent en permanence : on affiche l'un et on masque l'autre. Aucun élément
         n'est détruit ni recréé (recréer les boutons d'onglets faisait planter Tk sous Windows)."""
-        if self.est_bureau_etude:
+        if self.est_pilotage:
             self.tab_atelier.pack_forget()
+            self._onglets_du_profil()
             self.notebook.pack(expand=True, fill=tk.BOTH, padx=T.ESPACE_L, pady=(0, T.ESPACE_M))
-            self.notebook.set(self.NOM_ONGLET_SYNTHESE)
+            self.notebook.set(self.NOM_ONGLET_PILOTAGE if self.est_chef else self.NOM_ONGLET_SYNTHESE)
             self.root.unbind("<Button-1>")
             self.root.unbind("<Any-KeyPress>")
             self.on_main_tab_changed()
@@ -208,6 +250,19 @@ class SotraglaceApp(AtelierMixin, SyntheseMixin, GenerationOFMixin, MatriceMixin
             self.root.bind("<Button-1>", self.on_global_click)
             self.root.bind("<Any-KeyPress>", self.force_focus)
             self.scan_entry.focus_set()
+
+    def _onglets_du_profil(self):
+        """Chef d'atelier : sans Création d'OF ni Administration (Bureau d'étude). Les boutons d'onglets sont
+        masqués, jamais recréés (recréer la barre d'onglets fait planter Tk sous Windows)."""
+        barre = self.notebook._segmented_button
+        for index, nom in enumerate(barre.cget("values")):
+            bouton_onglet = barre._buttons_dict[nom]
+            if self.est_chef and nom in self.ONGLETS_BUREAU_ETUDE:
+                bouton_onglet.grid_remove()
+                barre.grid_columnconfigure(index, minsize=0)
+            else:
+                bouton_onglet.grid()
+                barre.grid_columnconfigure(index, minsize=barre._current_height)
 
     # --- Données Sage ---
 
@@ -310,17 +365,56 @@ class SotraglaceApp(AtelierMixin, SyntheseMixin, GenerationOFMixin, MatriceMixin
     def _rafraichir_ecrans_sage(self, detail):
         """Met les listes à jour sans déranger : reporté tant qu'une fenêtre est ouverte ou que le Bureau d'étude
         a sélectionné des lignes de commande (la sélection serait perdue)."""
-        occupe = self.root.grab_current() is not None or (self.est_bureau_etude and self.tree_be_sage.selection())
+        occupe = self.root.grab_current() is not None or (self.est_pilotage and self.tree_be_sage.selection())
         if occupe:
             if self._ecrans_sage_a_rafraichir is None:
                 self._apres(DELAI_REPORT_ECRANS_MS, self._rafraichissement_sage_reporte)
             self._ecrans_sage_a_rafraichir = detail
             return
         self.refresh_dashboard()
-        if self.commande_affichee and not self.est_bureau_etude:
+        if self.commande_affichee and not self.est_pilotage:
             self._afficher_commande(self.commande_affichee)
-        if self.est_bureau_etude:  # à l'atelier, le bandeau reste aux scans : seul le libellé Sage change
+        if self.est_pilotage:  # à l'atelier, le bandeau reste aux scans : seul le libellé Sage change
             self._signaler("progress", "Commandes Sage mises à jour", f"{len(self.sage.entetes)} commandes · {detail}")
+
+    # --- Écrans toujours à jour : écritures des autres postes ---
+
+    def _surveiller_base(self):
+        """Toutes les 5 s : si un autre poste a écrit dans la base (OF créé, corrigé, annulé, scans…),
+        tous les écrans affichés sont remis à jour."""
+        try:
+            version = self.depot.version_donnees()
+            if version != self._version_base:
+                self._version_base = version
+                self.rafraichir_ecrans_ouverts()
+        except tk.TclError:   # fenêtre en cours de fermeture
+            return
+        except Exception:     # base partagée momentanément verrouillée : on réessaie au tour suivant
+            journal().exception("Surveillance de la base")
+        self._apres(SURVEILLANCE_BASE_MS, self._surveiller_base)
+
+    def rafraichir_ecrans_ouverts(self):
+        """Remet à jour tout ce qui est affiché, sans perdre sélections ni OF dépliés. Reporté si une fenêtre
+        est ouverte ou si le Bureau d'étude a coché des lignes de commande (la saisie serait perdue)."""
+        if self.root.grab_current() is not None or (self.est_pilotage and self.tree_be_sage.selection()):
+            self._version_base = None   # on réessaiera au prochain tour
+            return
+        self.refresh_dashboard()
+        if not self.est_pilotage:
+            if self.commande_affichee:
+                self._afficher_commande(self.commande_affichee)
+            return
+        onglet = self.notebook.get()
+        if onglet == self.NOM_ONGLET_GENERATION and self.tree_be_cmd.selection():
+            self.on_be_order_select()
+        elif onglet == self.NOM_ONGLET_SYNTHESE:
+            self.refresh_synthese()
+        elif onglet == self.NOM_ONGLET_CHARGE:
+            self.refresh_be_charge()
+        elif onglet == self.NOM_ONGLET_PILOTAGE:
+            self.refresh_pilotage()
+        elif onglet == self.NOM_ONGLET_VALIDATIONS:
+            self.refresh_validations()
 
     def _rafraichissement_sage_reporte(self):
         detail, self._ecrans_sage_a_rafraichir = self._ecrans_sage_a_rafraichir, None
@@ -330,12 +424,12 @@ class SotraglaceApp(AtelierMixin, SyntheseMixin, GenerationOFMixin, MatriceMixin
     def action_refresh(self):
         bilan = self.load_sage_data()
         self.refresh_dashboard()
-        if self.commande_affichee and not self.est_bureau_etude:
+        if self.commande_affichee and not self.est_pilotage:
             self._afficher_commande(self.commande_affichee)
         if bilan:  # sinon, le message d'erreur de la lecture reste affiché
             detail = "copie de la base utilisée" if bilan.ignoree else bilan.resume()
             self._signaler("progress", "Données Sage actualisées", f"{len(self.sage.entetes)} commandes · {detail}")
-        if not self.est_bureau_etude:
+        if not self.est_pilotage:
             self.scan_entry.focus_set()
 
     # --- Mise en page ---
@@ -359,16 +453,21 @@ class SotraglaceApp(AtelierMixin, SyntheseMixin, GenerationOFMixin, MatriceMixin
 
         # Écran Atelier (postes machines) : panneau à part, affiché à la place des onglets
         self.tab_atelier = ctk.CTkFrame(self.root, fg_color=T.FOND, corner_radius=0)
+        # Onglets masqués au Chef d'atelier placés au milieu : la barre garde ses deux bouts arrondis
         self.tab_synthese = self.notebook.add(self.NOM_ONGLET_SYNTHESE)
+        self.tab_pilotage = self.notebook.add(self.NOM_ONGLET_PILOTAGE)
         self.tab_be_gen = self.notebook.add(self.NOM_ONGLET_GENERATION)
         self.tab_be_charge = self.notebook.add(self.NOM_ONGLET_CHARGE)
         self.tab_admin = self.notebook.add(self.NOM_ONGLET_ADMIN)
+        self.tab_validations = self.notebook.add(self.NOM_ONGLET_VALIDATIONS)
 
         self.build_atelier_ui(self.tab_atelier)
         self.build_synthese_ui()
         self.build_be_gen_ui()
         self.build_be_charge_ui()
         self.build_admin_ui()
+        self.build_pilotage_ui()
+        self.build_validations_ui()
 
     def _construire_entete(self):
         entete = ctk.CTkFrame(self.root, fg_color=T.FOND, height=64, corner_radius=0)
@@ -389,6 +488,9 @@ class SotraglaceApp(AtelierMixin, SyntheseMixin, GenerationOFMixin, MatriceMixin
         self._maj_entete_poste()
 
     def _maj_entete_poste(self):
+        if self.est_chef:
+            self.lbl_title.configure(text=f"   {cfg.POSTE_CHEF_ATELIER} · {self.chef_actuel}   ")
+            return
         if self.est_bureau_etude:
             self.lbl_title.configure(text=f"   {cfg.POSTE_BUREAU_ETUDE}   ")
             return
@@ -405,6 +507,10 @@ class SotraglaceApp(AtelierMixin, SyntheseMixin, GenerationOFMixin, MatriceMixin
             self.refresh_synthese()
         elif onglet == self.NOM_ONGLET_ADMIN:
             self.refresh_admin()
+        elif onglet == self.NOM_ONGLET_PILOTAGE:
+            self.refresh_pilotage()
+        elif onglet == self.NOM_ONGLET_VALIDATIONS:
+            self.refresh_validations()
 
     # --- Listes de commandes ---
 
@@ -418,11 +524,11 @@ class SotraglaceApp(AtelierMixin, SyntheseMixin, GenerationOFMixin, MatriceMixin
         self._recherche_timer = None
         self.refresh_dashboard()
 
-    @staticmethod
-    def _filtrer(entetes, recherche):
+    def _filtrer(self, entetes, recherche):
+        """Commandes dont le numéro, le client, la réf. client ou l'observation de Sage contient la recherche."""
         recherche = recherche.strip().lower()
         return [(do_piece, entete) for do_piece, entete in entetes.items()
-                if not recherche or recherche in do_piece.lower() or recherche in entete.get("DO_Tiers", "").lower()]
+                if not recherche or recherche in self.sage.texte_recherche(do_piece)]
 
     def refresh_dashboard(self):
         self.recharger_etat()

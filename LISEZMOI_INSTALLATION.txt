@@ -6,7 +6,7 @@ Installation avec vos données
    Admiral.exe          l'application
    suivi_atelier.db     la base de données : vos produits, opérations, postes
                         et gammes ; aucun OF, aucun scan (départ à zéro)
-   data\                le classeur Sage (BASE SAGE ADM.xlsx)
+   data\                le classeur Sage (BASE SAGE Admiral.xlsx)
    LISEZMOI.txt         ce fichier
    Gardez ces éléments ensemble, dans le même dossier.
 
@@ -37,8 +37,10 @@ Installation avec vos données
      elle-même à ce fichier.
 
 4. LES COMMANDES SAGE
-   L'application lit les commandes dans le classeur « BASE SAGE ADM.xlsx » du
-   dossier data. Ce classeur est relié à Sage. Pour le mettre à jour :
+   L'application lit les commandes dans le classeur « BASE SAGE Admiral.xlsx »
+   du dossier data (feuilles DOCENTETE et DOCLIGNE : les commandes en cours).
+   Ce classeur est relié à Sage. Gardez-en un seul dans le dossier data.
+   Pour le mettre à jour :
      a) ouvrez-le dans Excel, sur un PC qui a accès à Sage ;
      b) Données > Actualiser tout ;
      c) ENREGISTREZ le classeur (Ctrl+S). Sans enregistrement, rien ne change.

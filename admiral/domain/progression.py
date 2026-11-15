@@ -55,6 +55,9 @@ def verifier_scan(etat, of, mon_op, codpost):
         return False, motif, 0
 
     mes_scans = etat.compter(of.id, mon_op)
+    validation = etat.validation(of.id, mon_op)
+    if validation:
+        return False, f"{of.id} validé par {validation.chef} (chef d'atelier) : plus de scan à ce poste", mes_scans
     if mes_scans >= of.qte:
         return False, f"Quantité déjà atteinte pour {of.id} ({mes_scans}/{of.qte})", mes_scans
 

@@ -1,4 +1,4 @@
-"""Onglet Administration : produits et gammes, opérations, postes, import du référentiel Excel."""
+"""Onglet Administration : produits et gammes, opérations, postes, chefs d'atelier, import du référentiel Excel."""
 import os
 import tkinter as tk
 from tkinter import filedialog, messagebox
@@ -11,7 +11,7 @@ from ..journal import journal
 from .composants import bouton, carte, champ, tableau, texte, titre
 from .widgets import maj_tags_selection
 
-SECTIONS = ["Produits et gammes", "Opérations", "Postes", "Import Excel"]
+SECTIONS = ["Produits et gammes", "Opérations", "Postes", "Chefs d'atelier", "Import Excel"]
 
 
 class AdministrationMixin:
@@ -37,6 +37,7 @@ class AdministrationMixin:
             "Produits et gammes": self._construire_produits(),
             "Opérations": self._construire_operations(),
             "Postes": self._construire_postes(),
+            "Chefs d'atelier": self._construire_chefs(),
             "Import Excel": self._construire_import(),
         }
         self.choix_section_admin.set(SECTIONS[0])
@@ -108,6 +109,7 @@ class AdministrationMixin:
         self._remplir_operations()
         self._remplir_postes()
         self._remplir_produits()
+        self._remplir_chefs()
 
     # ===================== Opérations =====================
 
@@ -246,6 +248,65 @@ class AdministrationMixin:
             return
         self._nouveau_poste()
         self._apres_modification_referentiel(f"Poste {selection[0]} supprimé")
+
+    # ===================== Chefs d'atelier =====================
+
+    def _construire_chefs(self):
+        section, self.tree_admin_chefs, form = self._section_liste_formulaire(
+            "Chefs d'atelier", [("nom", "Nom", 240, "w"), ("code", "Code", 100, "center")], "Chef d'atelier")
+        self.tree_admin_chefs.bind("<<TreeviewSelect>>", self._choisir_chef, add="+")
+        texte(form, "Chaque chef se connecte avec son code personnel (« Changer de poste » → Chef d'atelier). "
+                    "Son nom signe les OF qu'il valide. Tant qu'aucun chef n'est créé, le code 1111 ouvre l'accès.",
+              taille=T.TAILLE_LEGENDE, wraplength=420, justify="left").pack(fill=tk.X)
+        self.chef_nom = self._ligne_champ(form, "Nom", "ex. Karim Benali")
+        self.chef_code = self._ligne_champ(form, "Code personnel", "4 chiffres ou plus")
+        self._boutons_formulaire(form, self._enregistrer_chef, self._nouveau_chef, self._supprimer_chef, "Nouveau")
+        return section
+
+    def _remplir_chefs(self):
+        for item in self.tree_admin_chefs.get_children():
+            self.tree_admin_chefs.delete(item)
+        self._codes_chefs = dict(self.depot.lister_chefs())
+        for nom in self._codes_chefs:
+            self.tree_admin_chefs.insert("", "end", iid=nom, tags=("pas_demarre",), values=(nom, "••••"))
+
+    def _choisir_chef(self, event=None):
+        selection = self.tree_admin_chefs.selection()
+        if selection:
+            self._remplir(self.chef_nom, selection[0])
+            self._remplir(self.chef_code, self._codes_chefs.get(selection[0], ""))
+
+    def _nouveau_chef(self):
+        self.tree_admin_chefs.selection_set(())
+        self._remplir(self.chef_nom, "")
+        self._remplir(self.chef_code, "")
+        self.chef_nom.focus_set()
+
+    def _enregistrer_chef(self):
+        selection = self.tree_admin_chefs.selection()
+        nom = self.chef_nom.get().strip()
+        try:
+            self.depot.enregistrer_chef(nom, self.chef_code.get(), ancien_nom=selection[0] if selection else None)
+        except ValueError as exc:
+            self._message_admin(str(exc), erreur=True)
+            return
+        journal().info("Chef d'atelier %s enregistré", nom)
+        self._message_admin(f"Chef {nom} enregistré")
+        self._remplir_chefs()
+        self.tree_admin_chefs.selection_set(nom)
+
+    def _supprimer_chef(self):
+        selection = self.tree_admin_chefs.selection()
+        if not selection:
+            return
+        if not messagebox.askyesno("Supprimer", f"Supprimer le chef {selection[0]} ?\n\n"
+                                   "Son code ne fonctionnera plus. Ses validations restent dans l'historique, à son nom."):
+            return
+        self.depot.supprimer_chef(selection[0])
+        journal().info("Chef d'atelier %s supprimé", selection[0])
+        self._nouveau_chef()
+        self._remplir_chefs()
+        self._message_admin(f"Chef {selection[0]} supprimé")
 
     # ===================== Produits et gammes =====================
 

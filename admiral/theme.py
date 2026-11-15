@@ -60,6 +60,7 @@ ETATS = {
     "retard":      ("En retard",  ERREUR_FOND,  ERREUR_TEXTE),
     "annule":      ("Annulé",     SURFACE,      TEXTE_ATTENUE),
     "cloturee":    ("Clôturée",   SURFACE,      TEXTE_ATTENUE),
+    "valide":      ("Validé",     INFO_FOND,    INFO_TEXTE),    # terminé par un chef d'atelier, sans scan complet
 }
 
 # --- Typographie : police système de chaque plateforme ---
@@ -84,7 +85,7 @@ def police(taille=TAILLE_CORPS, gras=False):
 
 
 def police_chiffres(taille=TAILLE_CORPS, gras=True):
-    """Chiffres et codes (OF-1001, 3 / 7) : chasse fixe, les colonnes ne bougent pas."""
+    """Chiffres et codes (OF261234-01, 3 / 7) : chasse fixe, les colonnes ne bougent pas."""
     return (FAMILLE_CHIFFRES, taille, "bold") if gras else (FAMILLE_CHIFFRES, taille)
 
 

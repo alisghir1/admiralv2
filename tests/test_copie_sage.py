@@ -44,6 +44,7 @@ class CopieSage(unittest.TestCase):
         self.assertEqual((bilan.commandes_sorties, bilan.lignes_sorties), (["CC2"], ["CC2-1000"]))
         donnees = self.depot.charger_sage()
         self.assertNotIn("CC2", donnees.entetes, "plus listée : elle n'est plus dans Sage")
+        self.assertEqual(donnees.client("CC2"), "CLIENT CC2", "ses OF restent affichés avec leur client")
         self.assertEqual(donnees.lignes_commande("CC2"), [])
         enfants = sage.lignes_enfants(donnees, "CC2", "CC2-1000")
         self.assertEqual([(c, q) for c, q, _ in enfants], [("CC2-1000", 3)], "l'OF garde le détail de sa ligne")
