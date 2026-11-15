@@ -1,5 +1,6 @@
 """Fenêtre principale : en-tête, onglets, état partagé, configuration du poste."""
 import os
+import sys
 import tkinter as tk
 from datetime import datetime
 from tkinter import ttk
@@ -46,9 +47,13 @@ class Onglets(ctk.CTkTabview):
 
     def _redessiner(self):
         try:
-            self.update_idletasks()
+            # Redessin forcé sur macOS seulement : sous Windows, update_idletasks() peut s'exécuter au milieu
+            # d'un autre rafraîchissement (une fenêtre qui s'ouvre colore sa barre de titre) et Tk plante.
+            if sys.platform == "darwin":
+                self.update_idletasks()
             self._tab_dict[self._current_name].tkraise()
-            self.winfo_toplevel().update_idletasks()
+            if sys.platform == "darwin":
+                self.winfo_toplevel().update_idletasks()
         except tk.TclError:
             pass
 
