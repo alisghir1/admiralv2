@@ -384,8 +384,13 @@ class Interface(unittest.TestCase):
         self.app._afficher_commande_pilotage()
         self.assertEqual(self.app.bandeau_pilotage.texte_affiche, "")
         self.app.filtre_pilotage.set("À traiter")
-        # Modification d'OF : délai rappelé à côté de la date de besoin, chants dans les lignes
+
+    @SAUT_WINDOWS_CI
+    def test_07_d_infos_sage_dans_la_modification_d_of(self):
+        # Délai rappelé à côté de la date de besoin, chants dans les lignes (fenêtre avec les données Sage,
+        # comme test_27 : ouverte par l'auto-vérification de l'exe sous Windows)
         from admiral.ui.dialogs import ModifierOfDialog
+        of = self.app.recharger_etat().ofs["OF1-01"]
         dlg = ModifierOfDialog(self.root, self.app.depot, of, sage=self.app.sage, cloturees=self.app.etat.cloturees)
         self.assertEqual(dlg.lbl_aide_besoin.cget("text"), "Délai Sage dépassé : 09/01")
         textes = [case.cget("text") for case in dlg.cadre_lignes.winfo_children()]
