@@ -57,11 +57,12 @@ class VueOF:
     urgent: bool = False
     besoin: str = ""      # "Besoin le 15/10" ou "En retard · besoin le 10/10"
     retard: bool = False
+    consigne: str = ""    # consigne du Bureau d'étude pour l'étape de ce poste
 
 
 class CarteOF(ctk.CTkFrame):
     """actions : objet fournissant selectionner_of(id), ajouter_scans_manuels(id, n, cle),
-    retirer_scans_manuels(id, n, cle) et ouvrir_historique(id)."""
+    retirer_scans_manuels(id, n, cle), ouvrir_historique(id) et imprimer_of(id)."""
 
     def __init__(self, parent, vue, actions):
         super().__init__(parent, fg_color=T.SURFACE, corner_radius=T.RAYON_CARTE, border_width=2, border_color=T.SURFACE)
@@ -98,6 +99,12 @@ class CarteOF(ctk.CTkFrame):
         self.lbl_obs = ctk.CTkLabel(dims, text="", font=T.police(T.TAILLE_CORPS), text_color=T.TEXTE_ATTENUE)
         self.lbl_obs.pack(side=tk.LEFT, padx=(T.ESPACE_M, 0))
 
+        # Consigne du Bureau d'étude pour ce poste : bien visible, affichée seulement s'il y en a une
+        self.lbl_consigne = ctk.CTkLabel(dims, text="", font=T.police(T.TAILLE_CORPS, gras=True), text_color=T.ALERTE_TEXTE,
+                                         fg_color=T.ALERTE_FOND, corner_radius=T.RAYON_CONTROLE, anchor="w", justify="left",
+                                         wraplength=520)
+        self._consigne_visible = False
+
         self.barre = ctk.CTkProgressBar(self, height=8, corner_radius=4, fg_color=T.BORDURE, progress_color=T.ALERTE)
         self.barre.grid(row=3, column=0, sticky="ew", padx=T.ESPACE_L, pady=(T.ESPACE_S, T.ESPACE_S))
 
@@ -121,6 +128,7 @@ class CarteOF(ctk.CTkFrame):
         self.menu = tk.Menu(self, tearoff=0, bg=T.SURFACE, fg=T.TEXTE, activebackground=T.PRIMAIRE,
                             activeforeground=T.BLANC, font=T.police(T.TAILLE_CORPS))
         self.menu.add_command(label="Historique des scans", command=lambda: actions.ouvrir_historique(self.id_of))
+        self.menu.add_command(label="Imprimer la fiche…", command=lambda: actions.imprimer_of(self.id_of))
         self.menu.add_separator()
         self.menu.add_command(label="Tout annuler à ce poste…", command=lambda: actions.retirer_scans_manuels(self.id_of, "all"))
 
@@ -161,9 +169,19 @@ class CarteOF(ctk.CTkFrame):
         self.btn_terminer.configure(state="disabled" if termine else "normal")
         retirable = vue.scans and vue.etat != "valide"
         self.btn_moins.configure(state="normal" if retirable else "disabled")
-        self.menu.entryconfigure(2, state="normal" if retirable else "disabled")
+        self.menu.entryconfigure(3, state="normal" if retirable else "disabled")
+        self._maj_consigne(vue.consigne)
         self._maj_frise(vue.etapes)
         self._maj_lignes(vue.lignes, of_termine=termine, verrouille=vue.etat == "valide")
+
+    def _maj_consigne(self, consigne):
+        if consigne:
+            self.lbl_consigne.configure(text=f"  Consigne : {consigne}  ")
+            if not self._consigne_visible:
+                self.lbl_consigne.pack(side=tk.LEFT, padx=(T.ESPACE_M, 0), fill=tk.X, expand=True)
+        elif self._consigne_visible:
+            self.lbl_consigne.pack_forget()
+        self._consigne_visible = bool(consigne)
 
     def _maj_frise(self, etapes):
         cles = [(e.libelle, e.ici) for e in etapes]

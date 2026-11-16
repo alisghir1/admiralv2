@@ -1,4 +1,4 @@
-ADMIRAL - Suivi d'atelier Sotraglace
+ADMIRAL - Suivi d'atelier
 Version de validation (données de démonstration)
 =====================================================
 
@@ -22,10 +22,18 @@ Version de validation (données de démonstration)
 
 3. CE QU'IL Y A À VALIDER
    Atelier            Commandes du poste, cartes des OF (état, dimensions, compteur,
-                      gamme), boutons +1 / Terminer / -1, menu « Plus » (historique).
+                      gamme), boutons +1 / Terminer / -1, menu « Plus » (historique,
+                      impression de la fiche). La consigne du bureau d'étude pour ce
+                      poste s'affiche sur la carte de l'OF.
                       « Simuler un scan » remplace la douchette : cliquez d'abord une carte.
-                      Avec une douchette, scannez un code OF (ex. OF240001-01) ou commande
-                      (ex. CMD-CC240001).
+                      Avec une douchette, scannez un OF (ex. OF240001-01), un article
+                      (ex. CC240001-1000 : une pièce de cette ligne) ou une commande
+                      (ex. CC240001 : « Terminer la commande » termine tous ses OF
+                      à ce poste). Le scan est reconnu même si le curseur est dans
+                      la recherche. Un code qui ne passe pas par ce poste est refusé
+                      avec le parcours prévu par le bureau d'étude.
+                      « Imprimer » (à côté de la recherche) : liste de travail du
+                      poste, fiches d'étape de la commande affichée.
                       Sous le nom de la commande : observation de Sage (en rouge si
                       ANNULEE ou BLOQUEE, en orange si en attente ou en rupture),
                       réf. client et délai. Les lignes indiquent les chants à poser
@@ -46,17 +54,23 @@ Version de validation (données de démonstration)
                       Les lignes sélectionnées sont totalisées : pièces, m², mètres
                       de chant. Le délai Sage est rappelé à côté de la date de besoin.
                       « Modifier » corrige tout l'OF : commande, produit, lignes,
-                      gamme (ajout, retrait, ordre, postes). Ce qui a déjà été
-                      scanné reste protégé.
+                      gamme (ajout, retrait, ordre, postes, consignes). Ce qui a
+                      déjà été scanné reste protégé.
+                      Chaque étape peut recevoir une consigne pour son poste.
+                      « Imprimer la commande » et « Imprimer » (OF choisi) : fiche
+                      commande, fiches suiveuses, fiches d'étape, étiquettes.
    Pilotage           (Chef d'atelier) Commandes et OF avec l'avancement de chaque
                       étape ; observation, réf. client et délai de la commande. Valider un OF, une étape ou une commande entière, même
                       sans scan : motif obligatoire, nom du chef enregistré.
                       Les postes voient aussitôt l'OF « Validé par … ».
    Validations        Historique des validations (qui, quand, motif) ; une
                       validation s'annule, l'annulation reste tracée.
-   Charge des postes  OF à faire / en cours / terminés par poste.
+   Charge des postes  OF à faire / en cours / terminés par poste ; « Imprimer les
+                      listes » : liste de travail d'un poste ou de tous.
    Administration     Produits et gammes, opérations, postes, chefs d'atelier,
-                      import Excel.
+                      import Excel, mise en service : remise à zéro de l'atelier
+                      (base vierge : OF, scans et validations effacés, référentiel
+                      gardé) et page d'essai de la douchette.
 
    Les données sont fictives : vous pouvez tout essayer sans risque.
    Pour repartir de zéro, supprimez suivi_atelier.db et config_poste.json,

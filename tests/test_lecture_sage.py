@@ -6,7 +6,7 @@ from types import SimpleNamespace
 from admiral.db import schema
 from admiral.db.depot import Depot
 from admiral.domain import lecture_sage, sage
-from admiral.ui.app import SotraglaceApp
+from admiral.ui.app import AdmiralApp
 
 
 def ecrire_lignes(dossier, contenu, date=None):
@@ -72,7 +72,7 @@ def lecture_simulee(date_source, pieces):
 
 
 class AppliquerLecture(unittest.TestCase):
-    """SotraglaceApp.appliquer_lecture_sage sur un écran simulé (sans fenêtre)."""
+    """AdmiralApp.appliquer_lecture_sage sur un écran simulé (sans fenêtre)."""
 
     def setUp(self):
         depot = Depot(schema.ouvrir(":memory:"))
@@ -82,7 +82,7 @@ class AppliquerLecture(unittest.TestCase):
                                    _rafraichir_ecrans_sage=self.rafraichissements.append)
 
     def appliquer(self, resultat):
-        SotraglaceApp.appliquer_lecture_sage(self.app, resultat)
+        AdmiralApp.appliquer_lecture_sage(self.app, resultat)
 
     def test_nouvelle_commande(self):
         self.appliquer(lecture_simulee("2026-07-28T15:00:00", ["CC1", "CC2"]))

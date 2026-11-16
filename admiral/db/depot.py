@@ -69,24 +69,41 @@ class Depot:
     # --- OF ---
 
     def charger_etat(self):
-        """Photo complète de l'atelier en quatre requêtes."""
+        """Photo complète de l'atelier en quelques requêtes (avec la consigne de chaque étape)."""
         ofs = [OF(*row[:7], row[7], row[8], row[9] or "", row[10] or "actif", row[11] or None, row[12] or 0)
                for row in self.conn.execute(
                    "SELECT ID_OF, CDE, PROD, DESIGN, OBSERV, Qte, LignesSage, Longueur, Largeur, Epaisseur, "
                    "Statut, DateBesoin, Priorite FROM CdeDetail ORDER BY rowid")]
-        gammes = self.conn.execute(
-            "SELECT ID_OF, CodeOp, Poste_Assigne FROM OF_Gammes ORDER BY ID_OF, Ordre").fetchall()
+        gammes, consignes = [], {}
+        for id_of, code_op, poste, consigne in self.conn.execute(
+                "SELECT ID_OF, CodeOp, Poste_Assigne, COALESCE(Consigne, '') FROM OF_Gammes ORDER BY ID_OF, Ordre"):
+            gammes.append((id_of, code_op, poste))
+            if consigne.strip():
+                consignes[(id_of, code_op)] = consigne.strip()
         postes = self.conn.execute("SELECT CodPost, RefOp FROM Postes").fetchall()
         scans = self.conn.execute(
             "SELECT ID_OF, Poste, Child_Key, COUNT(*) FROM Scans WHERE COALESCE(Annule, 0) = 0 "
             "GROUP BY ID_OF, Poste, Child_Key").fetchall()
         cloturees = [row[0] for row in self.conn.execute("SELECT CDE FROM CommandesCloturees")]
         validations = self.validations_actives()
-        return EtatAtelier(ofs, gammes, postes, scans, cloturees, validations)
+        return EtatAtelier(ofs, gammes, postes, scans, cloturees, validations, consignes)
+
+    @staticmethod
+    def _lignes_gamme(id_of, etapes):
+        """Lignes d'OF_Gammes. etapes : [(CodeOp, poste ou None)] ou [(CodeOp, poste, consigne)]."""
+        return [(id_of, ordre, etape[0], etape[1], (etape[2] if len(etape) > 2 else "") or None)
+                for ordre, etape in enumerate(etapes, start=1)]
+
+    def etapes_of(self, id_of):
+        """[(Ordre, CodeOp, Poste_Assigne, consigne)] : la gamme de l'OF avec la consigne de chaque étape."""
+        return self.conn.execute("SELECT Ordre, CodeOp, Poste_Assigne, COALESCE(Consigne, '') FROM OF_Gammes "
+                                 "WHERE ID_OF = ? ORDER BY Ordre", (id_of,)).fetchall()
+
 
     def creer_of(self, cde, ref_prod, design, observ, qte, lignes_sage, etapes, longueur=None, largeur=None, epaisseur="",
                  date_besoin=None, priorite=0):
-        """Crée un OF et sa gamme. etapes : [(CodeOp, Poste_Assigne ou None)]. Retourne l'ID créé.
+        """Crée un OF et sa gamme. etapes : [(CodeOp, Poste_Assigne ou None)], ou [(CodeOp, poste, consigne)]
+        avec la consigne du Bureau d'étude pour le poste de cette étape. Retourne l'ID créé.
         Lève LigneDejaAffectee si une des lignes Sage appartient déjà à un OF actif (rien n'est créé)."""
         cles = self._cles(cde, lignes_sage)
         with self.conn:
@@ -100,8 +117,8 @@ class Depot:
                 "Statut, DateBesoin, Priorite) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'actif', ?, ?)",
                 (id_of, cde, ref_prod, design, observ, qte, lignes_sage, longueur, largeur, epaisseur, date_besoin, priorite))
             self.conn.executemany(
-                "INSERT INTO OF_Gammes (ID_OF, Ordre, CodeOp, Poste_Assigne) VALUES (?, ?, ?, ?)",
-                [(id_of, ordre, code_op, poste) for ordre, (code_op, poste) in enumerate(etapes, start=1)])
+                "INSERT INTO OF_Gammes (ID_OF, Ordre, CodeOp, Poste_Assigne, Consigne) VALUES (?, ?, ?, ?, ?)",
+                self._lignes_gamme(id_of, etapes))
             self.conn.executemany("INSERT INTO OF_LignesSage (CleLigne, ID_OF) VALUES (?, ?)", [(c, id_of) for c in cles])
         return id_of
 
@@ -279,7 +296,8 @@ class Depot:
     def corriger_of(self, id_of, cde, prod, lignes, etapes, design, observ, qte, longueur, largeur, epaisseur,
                     date_besoin, priorite):
         """Correction complète d'un OF par le Bureau d'étude : commande, produit, lignes de commande, gamme
-        (opérations, ordre, postes) et tous les champs. lignes : clés des lignes Sage ; etapes : [(CodeOp, poste ou None)].
+        (opérations, ordre, postes, consignes) et tous les champs. lignes : clés des lignes Sage ;
+        etapes : [(CodeOp, poste ou None)] ou [(CodeOp, poste, consigne)].
 
         Ce qui a déjà été fabriqué est protégé (ValueError, rien n'est enregistré) :
         - une opération qui a des scans reste dans la gamme ;
@@ -289,7 +307,7 @@ class Depot:
         Une ligne prise par un autre OF actif lève LigneDejaAffectee.
         Un OF qui change de commande prend un numéro dans sa nouvelle commande (son numéro contient celui de la
         commande) ; seuls les OF d'avant cette numérotation (OF-1000…) gardent le leur. Retourne le numéro de l'OF."""
-        codes = [code for code, _ in etapes]
+        codes = [etape[0] for etape in etapes]
         if not codes:
             raise ValueError("Gardez au moins une opération dans la gamme.")
         if len(set(codes)) != len(codes):
@@ -339,8 +357,8 @@ class Depot:
                 "Largeur = ?, Epaisseur = ?, DateBesoin = ?, Priorite = ? WHERE ID_OF = ?",
                 (cde, prod, design, observ, qte, ",".join(jetons), longueur, largeur, epaisseur, date_besoin, priorite, id_of))
             self.conn.execute("DELETE FROM OF_Gammes WHERE ID_OF = ?", (id_of,))
-            self.conn.executemany("INSERT INTO OF_Gammes (ID_OF, Ordre, CodeOp, Poste_Assigne) VALUES (?, ?, ?, ?)",
-                                  [(id_of, ordre, code, poste) for ordre, (code, poste) in enumerate(etapes, start=1)])
+            self.conn.executemany("INSERT INTO OF_Gammes (ID_OF, Ordre, CodeOp, Poste_Assigne, Consigne) VALUES (?, ?, ?, ?, ?)",
+                                  self._lignes_gamme(id_of, etapes))
         return id_of
 
     def version_donnees(self):
@@ -463,6 +481,32 @@ class Depot:
     def rouvrir_commande(self, cde):
         with self.conn:
             self.conn.execute("DELETE FROM CommandesCloturees WHERE CDE = ?", (cde,))
+
+    # --- Remise à zéro de l'atelier (base vierge) ---
+
+    # Ce qui est vidé : le travail de l'atelier et la copie des commandes Sage. Ce qui reste : le référentiel
+    # (produits, opérations, postes, gammes) et les chefs d'atelier.
+    TABLES_ATELIER = ("Scans", "ValidationsChef", "OF_LignesSage", "OF_Gammes", "CdeDetail", "CommandesCloturees",
+                      "SageLignes", "SageCommandes", "SageLecture")
+
+    def contenu_atelier(self):
+        """{"OF", "scans", "validations", "commandes"} : ce que la remise à zéro effacerait."""
+        return {"OF": self._compter("SELECT COUNT(*) FROM CdeDetail"),
+                "scans": self._compter("SELECT COUNT(*) FROM Scans"),
+                "validations": self._compter("SELECT COUNT(*) FROM ValidationsChef"),
+                "commandes": self._compter("SELECT COUNT(*) FROM SageCommandes")}
+
+    def remettre_a_zero(self):
+        """Vide les OF, scans, validations, clôtures et la copie des commandes Sage, en une seule transaction.
+        La relecture suivante du classeur Sage remet les commandes en cours, sans aucun OF."""
+        with self.conn:
+            if not self.conn.in_transaction:
+                self.conn.execute("BEGIN IMMEDIATE")   # aucun poste n'écrit pendant le vidage
+            for table in self.TABLES_ATELIER:
+                self.conn.execute(f"DELETE FROM {table}")
+            # Numérotation des scans et des validations repartie de 1
+            if self.conn.execute("SELECT 1 FROM sqlite_master WHERE name = 'sqlite_sequence'").fetchone():
+                self.conn.execute("DELETE FROM sqlite_sequence WHERE name IN ('Scans', 'ValidationsChef')")
 
     # --- Copie des commandes Sage ---
 

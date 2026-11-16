@@ -32,6 +32,9 @@ Thumbs.db
 # Journaux
 logs/
 
+# PDF d'aperçu produits par l'impression (gardés 7 jours)
+impressions/
+
 # Sauvegardes locales des données (confidentielles)
 sauvegardes/
 

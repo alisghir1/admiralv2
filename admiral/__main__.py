@@ -37,7 +37,7 @@ def main():
 
     root.report_callback_exception = erreur_interface
 
-    from .ui.app import SotraglaceApp
+    from .ui.app import AdmiralApp
     try:
         if autotest:
             from . import autotest as verification
@@ -45,10 +45,10 @@ def main():
             from .db.depot import Depot
             from .config import chemin_base, lire_config
             premier_poste = Depot(schema.ouvrir(chemin_base(lire_config()))).lister_postes(trier=True)[0]
-            app = SotraglaceApp(root, poste=lire_config().get("poste") or f"{premier_poste[0]} - {premier_poste[1]}")
+            app = AdmiralApp(root, poste=lire_config().get("poste") or f"{premier_poste[0]} - {premier_poste[1]}")
             verification.lancer(root, app, resultat)
         else:
-            SotraglaceApp(root)
+            AdmiralApp(root)
     except Exception as exc:
         log.exception("Échec du démarrage")
         if not autotest:

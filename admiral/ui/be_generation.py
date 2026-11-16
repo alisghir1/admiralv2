@@ -11,7 +11,9 @@ from ..domain.synthese import format_date
 from ..db.depot import LigneDejaAffectee
 from ..journal import journal
 from .composants import BandeauCommande, bouton, carte, champ, menu_tri, tableau, texte, titre
+from .. import config as cfg
 from .dialogs import AddOfDialog, HistoriqueDialog, ModifierOfDialog
+from .impression import ImpressionDialog, imprimer_fiches
 from .widgets import get_icon, maj_tags_selection
 
 LIBELLES_AVANCEMENT = {"encours": "En cours", "pas_demarre": "À faire", "terminee": "Terminée"}
@@ -66,6 +68,9 @@ class GenerationOFMixin:
         ligne_tri.pack(fill=tk.X, padx=T.ESPACE_L, pady=(0, T.ESPACE_S))
         self.btn_cloture = bouton(gauche, "Clôturer la commande", self.basculer_cloture, style="secondaire", state="disabled")
         self.btn_cloture.pack(side=tk.BOTTOM, fill=tk.X, padx=T.ESPACE_L, pady=(0, T.ESPACE_L))
+        self.btn_imprimer_commande = bouton(gauche, "Imprimer la commande", self.imprimer_commande_be, style="secondaire",
+                                            state="disabled")
+        self.btn_imprimer_commande.pack(side=tk.BOTTOM, fill=tk.X, padx=T.ESPACE_L, pady=(0, T.ESPACE_S))
         cadre, self.tree_be_cmd = tableau(gauche, [("cmd", "Commande", 110, "w"), ("client", "Client", 150, "w"),
                                                    ("etat", "État", 96, "center")])
         self.tree_be_cmd.column("cmd", minwidth=110)   # le numéro reste lisible : c'est le client qui se réduit
@@ -92,6 +97,8 @@ class GenerationOFMixin:
         self.btn_ajouter_lignes.pack(side=tk.RIGHT, padx=T.ESPACE_S)
         self.lbl_be_message = ctk.CTkLabel(entete, text="", font=T.police(T.TAILLE_CORPS, gras=True), text_color=T.SUCCES_VIF)
         self.lbl_be_message.pack(side=tk.RIGHT, padx=T.ESPACE_M)
+        self.lbl_be_commande.pack_forget()   # replacé après les boutons : un nom de client long ne les écrase plus
+        self.lbl_be_commande.pack(side=tk.LEFT)
         # Contexte Sage de la commande : réf. client, date, délai, observation
         self.bandeau_be = BandeauCommande(bloc_sage)
         self.bandeau_be.pack(fill=tk.X, padx=T.ESPACE_L, pady=(0, T.ESPACE_XS))
@@ -116,18 +123,22 @@ class GenerationOFMixin:
         bloc_of.grid(row=1, column=0, sticky="nsew")
         entete_of = ctk.CTkFrame(bloc_of, fg_color="transparent")
         entete_of.pack(fill=tk.X, padx=T.ESPACE_L, pady=(T.ESPACE_L, T.ESPACE_S))
-        titre(entete_of, "OF de la commande", taille=T.TAILLE_TITRE).pack(side=tk.LEFT)
-        bloc_tri_of, self.tri_be_of = menu_tri(entete_of, tri.TRIS_OF, self.on_be_order_select, largeur=160)
-        bloc_tri_of.pack(side=tk.LEFT, padx=(T.ESPACE_L, 0))
+        titre_of = titre(entete_of, "OF de la commande", taille=T.TAILLE_TITRE)
+        bloc_tri_of, self.tri_be_of = menu_tri(entete_of, tri.TRIS_OF, self.on_be_order_select, largeur=150)
         # « Supprimer » agit sur l'OF, ou devient « Retirer la ligne » quand une ligne de l'OF est sélectionnée
-        self.btn_supprimer_of = bouton(entete_of, "Supprimer", self.supprimer_of_be, style="danger", width=140, state="disabled")
+        self.btn_supprimer_of = bouton(entete_of, "Supprimer", self.supprimer_of_be, style="danger", width=130, state="disabled")
         self.btn_supprimer_of.pack(side=tk.RIGHT)
-        self.btn_annuler_of = bouton(entete_of, "Annuler l'OF", self.basculer_annulation_of, style="secondaire", width=130, state="disabled")
+        self.btn_annuler_of = bouton(entete_of, "Annuler l'OF", self.basculer_annulation_of, style="secondaire", width=120, state="disabled")
         self.btn_annuler_of.pack(side=tk.RIGHT, padx=T.ESPACE_S)
-        self.btn_historique_of = bouton(entete_of, "Historique", self.historique_of_be, style="secondaire", width=110, state="disabled")
+        self.btn_historique_of = bouton(entete_of, "Historique", self.historique_of_be, style="secondaire", width=100, state="disabled")
         self.btn_historique_of.pack(side=tk.RIGHT)
-        self.btn_modifier_of = bouton(entete_of, "Modifier", self.modifier_of_be, style="primaire", width=110, state="disabled")
-        self.btn_modifier_of.pack(side=tk.RIGHT, padx=T.ESPACE_S)
+        self.btn_imprimer_of = bouton(entete_of, "Imprimer", self.imprimer_of_be, style="secondaire", width=92, state="disabled")
+        self.btn_imprimer_of.pack(side=tk.RIGHT, padx=T.ESPACE_S)
+        self.btn_modifier_of = bouton(entete_of, "Modifier", self.modifier_of_be, style="primaire", width=100, state="disabled")
+        self.btn_modifier_of.pack(side=tk.RIGHT)
+        # Titre et tri placés après les boutons : en petite largeur, c'est le tri qui se réduit, pas les actions
+        titre_of.pack(side=tk.LEFT)
+        bloc_tri_of.pack(side=tk.LEFT, padx=(T.ESPACE_L, T.ESPACE_S))
         cadre, self.tree_be_of = tableau(bloc_of, [
             ("id", "OF", 140, "center"), ("prod", "Produit", 120, "w"), ("design", "Désignation", 200, "w"),
             ("dim", "Dimensions", 150, "center"), ("qte", "Qté", 50, "center"), ("besoin", "Besoin", 70, "center"),
@@ -206,7 +217,8 @@ class GenerationOFMixin:
         for item in self.tree_be_of.get_children():
             self.tree_be_of.delete(item)
         for of in self._ofs_be_tries(do_piece):
-            parcours = " › ".join(op + (f" ({poste})" if poste else "") for op, poste in self.etat.gamme(of.id))
+            parcours = " › ".join(op + (f" ({poste})" if poste else "") + (" ✎" if self.etat.consigne(of.id, op) else "")
+                                  for op, poste in self.etat.gamme(of.id))
             etat_texte, tag = self._etat_of_be(of)
             self.tree_be_of.insert("", "end", iid=of.id, values=(of.id, of.prod, of.design, of.dimensions, of.qte,
                                                                  format_date(of.date_besoin), etat_texte, parcours),
@@ -304,8 +316,13 @@ class GenerationOFMixin:
         chants = sage.chants_communs([self.sage.lignes.get(s, {}) for s in selected_sage]) if selected_sage else ""
         dialog = AddOfDialog(self.root, self.depot, do_piece, self.sage.client(do_piece, ""), valeurs["qte"], valeurs["design"],
                              lignes_sage=",".join(selected_sage), longueur=valeurs["longueur"], largeur=valeurs["largeur"],
-                             dimensions_sage=bool(selected_sage), chants=chants, infos=self.sage.infos_commande(do_piece))
+                             dimensions_sage=bool(selected_sage), chants=chants, infos=self.sage.infos_commande(do_piece),
+                             imprimer=bool(self.config.get("imprimer_apres_creation")))
         self.root.wait_window(dialog)
+        if dialog.result and dialog.imprimer != bool(self.config.get("imprimer_apres_creation")):
+            # Le choix de la case est gardé pour les prochains OF de ce PC
+            self.config["imprimer_apres_creation"] = dialog.imprimer
+            cfg.ecrire_config({"imprimer_apres_creation": dialog.imprimer})
 
         if dialog.result:
             journal().info("OF %s créé pour la commande %s", dialog.result, do_piece)
@@ -317,6 +334,28 @@ class GenerationOFMixin:
                 self.tree_be_of.see(dialog.result)
                 maj_tags_selection(self.tree_be_of)
             self._message_be(f"{dialog.result} créé")
+            if dialog.imprimer:
+                try:
+                    imprimer_fiches(self, [dialog.result], dialog.result)
+                except Exception as exc:   # lecteur PDF absent, dossier protégé… : l'OF est créé quand même
+                    journal().exception("Impression de la fiche de %s", dialog.result)
+                    messagebox.showwarning("Impression", f"{dialog.result} est créé, mais sa fiche n'a pas pu être imprimée :\n{exc}")
+
+    # --- Impression ---
+
+    def imprimer_commande_be(self):
+        selection = self.tree_be_cmd.selection()
+        if not selection:
+            return
+        cde = selection[0]
+        self.recharger_etat()
+        ids = [of.id for of in self.etat.ofs_par_cde.get(cde, [])]
+        ImpressionDialog(self.root, self, f"Impression · commande {cde}", cde=cde, ids_of=ids, coches=("commande",))
+
+    def imprimer_of_be(self):
+        of = self._of_be_selectionne()
+        if of and self.etat.en_service(of):
+            ImpressionDialog(self.root, self, f"Impression · {of.id}", ids_of=[of.id], coches=("suiveuses",))
 
     # --- État et actions sur les OF ---
 
@@ -358,6 +397,7 @@ class GenerationOFMixin:
         etat = "normal" if of else "disabled"
         for btn in (self.btn_modifier_of, self.btn_historique_of, self.btn_annuler_of, self.btn_supprimer_of):
             btn.configure(state=etat)
+        self.btn_imprimer_of.configure(state="normal" if of and self.etat.en_service(of) else "disabled")
         self.btn_annuler_of.configure(text="Réactiver l'OF" if of and of.annule else "Annuler l'OF")
         self.btn_supprimer_of.configure(text="Retirer la ligne" if cle else "Supprimer")
         lignes = self.tree_be_sage.selection()
@@ -367,6 +407,7 @@ class GenerationOFMixin:
 
     def _maj_bouton_cloture(self):
         selection = self.tree_be_cmd.selection()
+        self.btn_imprimer_commande.configure(state="normal" if selection else "disabled")
         if not selection:
             self.btn_cloture.configure(state="disabled", text="Clôturer la commande")
             return

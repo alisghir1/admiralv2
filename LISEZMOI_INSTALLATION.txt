@@ -52,16 +52,58 @@ Installation avec vos données
    Les commandes sont recopiées dans la base : une commande livrée disparaît des
    listes, mais ses OF gardent leur détail. Sage n'est jamais modifié.
 
-5. SAUVEGARDE
+5. REPARTIR D'UNE BASE VIERGE (mise en production)
+   Bureau d'étude > Administration > Mise en service > « Remettre l'atelier à
+   zéro » : tapez VIDER puis cliquez sur « Remettre à zéro ».
+   - Sont effacés : les OF, les scans, les validations, les commandes clôturées et
+     la copie des commandes Sage.
+   - Sont gardés : produits, gammes, opérations, postes et chefs d'atelier.
+   - Les commandes en cours reviennent aussitôt du classeur Sage, sans OF.
+   - Une copie de la base est faite dans « sauvegardes » avant le vidage.
+   Tous les PC suivent (en 5 secondes au plus).
+
+6. IMPRESSION ET DOUCHETTE
+   Chaque élément a son code-barres (Code 128) :
+     commande  CC261234          OF  OF261234-01          article  CC261234-1000
+   (un article est une ligne de la commande Sage).
+   « Imprimer » ouvre un choix de documents, en PDF noir et blanc :
+   - fiche suiveuse d'un OF : tout son parcours, une case à cocher par article
+     et par étape, consignes du bureau d'étude, zone de remarques ;
+   - fiche d'étape : l'OF vu par un seul poste (demi-page, deux par feuille) ;
+   - fiche commande : ses OF, leur avancement, les lignes pas encore en OF ;
+   - liste de travail d'un poste : tous ses OF à faire, urgents en tête ;
+   - étiquettes des articles : planche A4 de 21 étiquettes (63,5 x 38,1 mm,
+     type Avery L7160), une par ligne ou une par pièce.
+   « Aperçu / imprimer » ouvre le PDF : imprimez-le depuis le lecteur (Ctrl+P).
+   « Enregistrer en PDF... » l'enregistre où vous voulez.
+   Où trouver « Imprimer » : Création d'OF (commande ou OF choisi, et case
+   « Imprimer la fiche suiveuse après la création »), Pilotage, Charge des postes,
+   et sur chaque poste (à côté de la recherche, et dans le menu « Plus » d'un OF).
+   SCANS : un OF ou un article scanné est compté au poste ; une commande scannée
+   s'affiche avec ses OF du poste (« Terminer la commande » les termine tous, après
+   confirmation). Un code qui ne passe pas par ce poste est refusé : Admiral
+   affiche le parcours prévu par le bureau d'étude, avec un son d'erreur.
+   DOUCHETTE : branchée en USB, elle tape comme un clavier. Le scan est reconnu
+   partout dans Admiral (même si le curseur est dans la recherche), à condition
+   qu'Admiral soit la fenêtre au premier plan. Pour que les scans arrivent même
+   quand une autre fenêtre est devant : réglez la douchette en « port COM USB »
+   (code de configuration de sa notice), puis ajoutez dans config_poste.json du
+   poste :  "douchette_port": "auto"   (ou le port exact, par exemple "COM3").
+   Sous le champ de scan, Admiral indique alors « Douchette COM connectée ».
+   Imprimez la page d'essai (Administration > Mise en service) et scannez ses
+   codes sur un poste. Si Admiral signale une douchette « en clavier anglais »,
+   réglez-la en clavier français (AZERTY) avec le code de configuration de sa notice.
+
+7. SAUVEGARDE
    Toutes vos données (OF, scans) sont dans suivi_atelier.db.
    Copiez ce fichier régulièrement (une fois par jour, par exemple) sur un autre
    disque. Avant chaque mise à jour de la base, l'application en fait aussi une
    copie automatique dans le dossier « sauvegardes ».
 
-6. METTRE À JOUR L'APPLICATION
+8. METTRE À JOUR L'APPLICATION
    Remplacez seulement Admiral.exe. Ne remplacez JAMAIS suivi_atelier.db :
    la nouvelle version met la base à jour toute seule au démarrage.
 
-7. EN CAS DE PROBLÈME
+9. EN CAS DE PROBLÈME
    Envoyez le fichier logs\admiral.log (créé à côté d'Admiral.exe)
    avec une description de ce que vous faisiez.

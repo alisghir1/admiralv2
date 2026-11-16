@@ -61,7 +61,7 @@ class Validation:
 
 
 class EtatAtelier:
-    def __init__(self, ofs, gammes, postes, scans, cloturees=(), validations=()):
+    def __init__(self, ofs, gammes, postes, scans, cloturees=(), validations=(), consignes=None):
         """
         ofs       : [OF] dans l'ordre de création (annulés compris)
         gammes    : [(ID_OF, CodeOp, Poste_Assigne)] triés par ID_OF puis Ordre
@@ -70,6 +70,7 @@ class EtatAtelier:
         cloturees : commandes clôturées (livrées)
         validations : [(ID, ID_OF, CodeOp ou None, Chef, Motif, Commentaire, date)] actives, de la plus ancienne
                       à la plus récente — étapes déclarées terminées par un chef d'atelier, sans scan
+        consignes : {(ID_OF, CodeOp): consigne du Bureau d'étude pour le poste de cette étape}
         """
         self.ofs = {of.id: of for of in ofs}
         self.cloturees = set(cloturees)
@@ -80,6 +81,7 @@ class EtatAtelier:
             if not of.annule:
                 self.ofs_par_cde[of.cde].append(of)
 
+        self.consignes = dict(consignes or {})
         self.gammes = defaultdict(list)
         for id_of, code_op, poste_assigne in gammes:
             self.gammes[id_of].append((code_op, poste_assigne))
@@ -127,6 +129,10 @@ class EtatAtelier:
 
     def gamme(self, id_of):
         return self.gammes.get(id_of, [])
+
+    def consigne(self, id_of, ref_op):
+        """Consigne du Bureau d'étude pour l'étape ref_op de l'OF ("" sans consigne)."""
+        return self.consignes.get((id_of, ref_op), "")
 
     def compter(self, id_of, ref_op, child_key=TOUS_SCANS):
         """Pièces d'un OF passées à une opération (tous postes confondus).

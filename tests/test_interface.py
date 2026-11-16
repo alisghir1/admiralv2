@@ -72,8 +72,8 @@ class Interface(unittest.TestCase):
         for nom in ("showinfo", "showwarning", "showerror", "askyesno"):
             cls._messagebox[nom] = getattr(messagebox, nom)
             setattr(messagebox, nom, lambda *a, nom=nom, **k: cls.messages.append(nom) or cls.reponse_oui_non)
-        from admiral.ui.app import SotraglaceApp
-        cls.app = SotraglaceApp(cls.root)
+        from admiral.ui.app import AdmiralApp
+        cls.app = AdmiralApp(cls.root)
 
     @classmethod
     def tearDownClass(cls):
@@ -156,8 +156,9 @@ class Interface(unittest.TestCase):
         self.assertEqual(self.app.lbl_scan_compte.cget("text"), "1 / 7")
         self.poste("USI1")
         self.app.process_scan("OF1-01")
-        self.assertEqual(self.bandeau()[0], "Scan refusé")
-        self.assertIn("ne passe pas par l'opération USI", self.bandeau()[1])
+        self.assertEqual(self.bandeau()[0], "Pas pour ce poste")
+        self.assertIn("ne passe pas par ce poste (USI1", self.bandeau()[1])
+        self.assertIn("Découpe › Façonnage › Trempe", self.bandeau()[1], "parcours prévu par le bureau d'étude")
         self.poste("FAC1")
         self.app.process_scan("OF1-01")
         self.assertEqual(self.scans("OF1-01", "FAC"), 1)

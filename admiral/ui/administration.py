@@ -5,13 +5,15 @@ from tkinter import filedialog, messagebox
 
 import customtkinter as ctk
 
+from .. import config as cfg
 from .. import theme as T
-from ..domain import referentiel
+from ..db import schema
+from ..domain import documents, referentiel
 from ..journal import journal
 from .composants import bouton, carte, champ, tableau, texte, titre
 from .widgets import maj_tags_selection
 
-SECTIONS = ["Produits et gammes", "Opérations", "Postes", "Chefs d'atelier", "Import Excel"]
+SECTIONS = ["Produits et gammes", "Opérations", "Postes", "Chefs d'atelier", "Import Excel", "Mise en service"]
 
 
 class AdministrationMixin:
@@ -39,6 +41,7 @@ class AdministrationMixin:
             "Postes": self._construire_postes(),
             "Chefs d'atelier": self._construire_chefs(),
             "Import Excel": self._construire_import(),
+            "Mise en service": self._construire_mise_en_service(),
         }
         self.choix_section_admin.set(SECTIONS[0])
         self._afficher_section_admin(SECTIONS[0])
@@ -110,6 +113,7 @@ class AdministrationMixin:
         self._remplir_postes()
         self._remplir_produits()
         self._remplir_chefs()
+        self._maj_mise_en_service()
 
     # ===================== Opérations =====================
 
@@ -484,3 +488,92 @@ class AdministrationMixin:
         self.btn_importer.configure(state="disabled")
         self._referentiel_a_importer = None
         self._apres_modification_referentiel("Référentiel importé")
+
+    # ===================== Mise en service : remise à zéro, douchette =====================
+
+    def _construire_mise_en_service(self):
+        section = ctk.CTkFrame(self.zone_admin, fg_color="transparent")
+        section.columnconfigure(0, weight=60, uniform="mes")
+        section.columnconfigure(1, weight=40, uniform="mes")
+        section.rowconfigure(0, weight=1)
+
+        bloc = carte(section)
+        bloc.grid(row=0, column=0, sticky="nsew", padx=(0, T.ESPACE_S // 2))
+        titre(bloc, "Remettre l'atelier à zéro", taille=T.TAILLE_SOUS_TITRE).pack(
+            fill=tk.X, padx=T.ESPACE_XL, pady=(T.ESPACE_XL, T.ESPACE_XS))
+        texte(bloc, "Pour démarrer en production avec une base vierge. Sont effacés : les OF, les scans, les "
+                    "validations, les commandes clôturées et la copie des commandes Sage. Sont gardés : produits, "
+                    "gammes, opérations, postes et chefs d'atelier. Les commandes en cours reviennent aussitôt du "
+                    "classeur Sage, sans OF. Une copie de la base est faite dans « sauvegardes » avant le vidage. "
+                    "Tous les PC suivent.", wraplength=640, justify="left").pack(fill=tk.X, padx=T.ESPACE_XL)
+        self.lbl_contenu_atelier = titre(bloc, "", taille=T.TAILLE_CORPS)
+        self.lbl_contenu_atelier.pack(fill=tk.X, padx=T.ESPACE_XL, pady=(T.ESPACE_L, T.ESPACE_S))
+        ligne = ctk.CTkFrame(bloc, fg_color="transparent")
+        ligne.pack(fill=tk.X, padx=T.ESPACE_XL, pady=(0, T.ESPACE_S))
+        texte(ligne, "Tapez VIDER pour confirmer").pack(side=tk.LEFT)
+        self.champ_vider = champ(ligne, "VIDER", largeur=120)
+        self.champ_vider.pack(side=tk.LEFT, padx=T.ESPACE_S)
+        bouton(ligne, "Remettre à zéro", self.remettre_atelier_a_zero, style="danger", width=160).pack(side=tk.LEFT)
+        self.lbl_remise_info = texte(bloc, "", wraplength=640, justify="left")
+        self.lbl_remise_info.pack(fill=tk.X, padx=T.ESPACE_XL, pady=(T.ESPACE_S, T.ESPACE_L))
+
+        douchette = carte(section)
+        douchette.grid(row=0, column=1, sticky="nsew", padx=(T.ESPACE_S // 2, 0))
+        titre(douchette, "Douchette", taille=T.TAILLE_SOUS_TITRE).pack(fill=tk.X, padx=T.ESPACE_XL, pady=(T.ESPACE_XL, T.ESPACE_XS))
+        texte(douchette, "Imprimez la page d'essai, puis scannez ses codes depuis un poste machine (écran Atelier). "
+                         "Admiral dit si la douchette est bien réglée ; une douchette en clavier anglais tape « é » au lieu "
+                         "de « 2 » : Admiral corrige la lecture, mais il faut la régler en français (AZERTY).",
+              wraplength=400, justify="left").pack(fill=tk.X, padx=T.ESPACE_XL)
+        bouton(douchette, "Imprimer la page d'essai", self.imprimer_page_essai, style="secondaire").pack(
+            anchor="w", padx=T.ESPACE_XL, pady=T.ESPACE_L)
+        return section
+
+    def _maj_mise_en_service(self):
+        contenu = self.depot.contenu_atelier()
+        self.lbl_contenu_atelier.configure(
+            text=f"Actuellement : {contenu['OF']} OF, {contenu['scans']} scans, {contenu['validations']} validations, "
+                 f"{contenu['commandes']} commandes copiées de Sage")
+
+    def _sauvegarder_base(self, motif):
+        """Copie de la base avant un vidage ; None si la copie est impossible (signalé)."""
+        try:
+            return schema.sauvegarder(self.depot.conn, cfg.chemin_base(self.config), motif)
+        except Exception as exc:   # dossier en lecture seule…
+            journal().exception("Sauvegarde avant remise à zéro")
+            messagebox.showwarning("Remettre à zéro", f"La copie de sauvegarde de la base a échoué :\n{exc}\n\nRien n'a été effacé.")
+            return None
+
+    def remettre_atelier_a_zero(self):
+        if self.champ_vider.get().strip().upper() != "VIDER":
+            self.lbl_remise_info.configure(text="Tapez VIDER dans le champ pour confirmer.", text_color=T.ERREUR_TEXTE)
+            return
+        contenu = self.depot.contenu_atelier()
+        if not messagebox.askyesno(
+                "Remettre l'atelier à zéro",
+                f"Effacer {contenu['OF']} OF, {contenu['scans']} scans et {contenu['validations']} validations, "
+                "sur tous les PC ?\n\nProduits, gammes, opérations, postes et chefs d'atelier sont gardés. "
+                "Une copie de la base est faite avant."):
+            return
+        copie = self._sauvegarder_base("avant_remise_a_zero")
+        if copie is None:
+            return
+        self.depot.remettre_a_zero()
+        journal().info("Atelier remis à zéro (%s) ; copie de la base : %s", contenu, copie)
+        self.champ_vider.delete(0, tk.END)
+        bilan = self.load_sage_data()   # les commandes en cours reviennent du classeur Sage
+        self.recharger_etat()
+        self.refresh_dashboard()
+        self._maj_mise_en_service()
+        relu = f"{len(self.sage.entetes)} commandes en cours relues de Sage" if bilan else "classeur Sage à relire"
+        self.lbl_remise_info.configure(text=f"Atelier remis à zéro · {relu}. Copie de la base avant le vidage : {copie}",
+                                       text_color=T.TEXTE_ATTENUE)
+        self._message_admin("Atelier remis à zéro")
+
+    def imprimer_page_essai(self):
+        from .impression import generer_apercu
+        etat = self.recharger_etat()
+        try:
+            generer_apercu([documents.page_essai(etat, self.sage)], "Page_essai_douchette", "Page d'essai de la douchette")
+        except Exception as exc:
+            journal().exception("Page d'essai")
+            self._message_admin(f"Impression impossible : {exc}", erreur=True)

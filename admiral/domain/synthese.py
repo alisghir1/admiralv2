@@ -35,6 +35,14 @@ def format_date(iso):
     return f"{jour}/{mois}" if int(annee) == date.today().year else f"{jour}/{mois}/{annee}"
 
 
+def format_date_complete(iso):
+    """'2026-10-15' -> '15/10/2026' : dates imprimées, toujours avec l'année."""
+    if not iso:
+        return ""
+    annee, mois, jour = iso[:10].split("-")
+    return f"{jour}/{mois}/{annee}"
+
+
 def calculer(etat, postes, libelles, scans_jour, aujourd_hui):
     """postes : [(CodPost, DesPost, RefOp)] ; libelles : {RefOp: libellé} ; scans_jour : {poste: n} ; aujourd_hui : date."""
     ofs = etat.ofs_en_service()

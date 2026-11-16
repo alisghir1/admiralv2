@@ -4,7 +4,9 @@ import tkinter as tk
 import customtkinter as ctk
 
 from .. import theme as T
+from ..domain import progression
 from .composants import bouton, carte, lier_clic, texte, titre
+from .impression import ImpressionDialog
 from .widgets import get_icon
 
 # Colonnes : état -> (titre, couleur d'accent de la colonne)
@@ -30,6 +32,7 @@ class ChargeMixin:
         ligne.pack(fill=tk.X, padx=T.ESPACE_L, pady=(T.ESPACE_L, T.ESPACE_XS))
         titre(ligne, "Charge des postes", taille=T.TAILLE_TITRE).pack(side=tk.LEFT)
         bouton(ligne, "Actualiser", self.refresh_be_charge, style="secondaire", icone=get_icon("refresh")).pack(side=tk.RIGHT)
+        bouton(ligne, "Imprimer les listes", self.imprimer_listes_travail, style="secondaire").pack(side=tk.RIGHT, padx=T.ESPACE_S)
         self.cadre_choix_poste = ctk.CTkFrame(ligne, fg_color="transparent")
         self.cadre_choix_poste.pack(side=tk.LEFT, padx=T.ESPACE_XL)
         self.choix_poste = None
@@ -99,12 +102,10 @@ class ChargeMixin:
         # du poste (assignée à ce poste ou libre). L'avancement est celui de l'étape, tous postes confondus :
         # une étape libre faite par un autre poste n'est plus « à faire » ici.
         par_colonne = {cle: [] for cle, _, _ in COLONNES}
-        if ref_op:
-            for of in etat.ofs_en_service():
-                if any(code_op == ref_op and (not assigne or assigne == codpost) for code_op, assigne in etat.gamme(of.id)):
-                    scans = etat.compter(of.id, ref_op)
-                    cle = "pas_demarre" if scans == 0 else ("terminee" if scans >= of.qte else "encours")
-                    par_colonne[cle].append((of, scans))
+        for of, _ in progression.ofs_du_poste(etat, codpost):
+            scans = etat.compter(of.id, ref_op)
+            cle = "pas_demarre" if scans == 0 else ("terminee" if scans >= of.qte else "encours")
+            par_colonne[cle].append((of, scans))
 
         total = sum(len(v) for v in par_colonne.values())
         libelle_op = self.depot.libelles_operations().get(ref_op, ref_op or "aucune opération")
@@ -125,6 +126,15 @@ class ChargeMixin:
             if not elements:
                 texte(colonne["liste"], "Aucun OF", anchor="center").pack(fill=tk.X, pady=T.ESPACE_XL)
 
+    def imprimer_listes_travail(self):
+        """Listes de travail : le poste affiché, ou tous les postes d'un coup (une page par poste)."""
+        codes_postes = [code for code, _ in self.depot.lister_postes(trier=True)]
+        if self.poste_charge in codes_postes:   # le poste affiché d'abord
+            codes_postes.remove(self.poste_charge)
+            codes_postes.insert(0, self.poste_charge)
+        if codes_postes:
+            ImpressionDialog(self.root, self, "Impression · listes de travail", postes=codes_postes, coches=("liste",))
+
     def _carte_charge(self, parent, of, scans, etat_colonne):
         mini = ctk.CTkFrame(parent, fg_color=T.SURFACE, corner_radius=T.RAYON_CONTROLE)
         mini.pack(fill=tk.X, padx=T.ESPACE_XS, pady=(0, T.ESPACE_S))
@@ -133,6 +143,10 @@ class ChargeMixin:
         ctk.CTkLabel(haut, text=of.id, font=T.police_chiffres(T.TAILLE_CORPS), text_color=T.TEXTE).pack(side=tk.LEFT)
         ctk.CTkLabel(haut, text=f"{scans} / {of.qte}", font=T.police_chiffres(T.TAILLE_CORPS), text_color=T.TEXTE).pack(side=tk.RIGHT)
         texte(mini, f"{of.cde} · {of.design}", taille=T.TAILLE_LEGENDE).pack(fill=tk.X, padx=T.ESPACE_M)
+        consigne = self.etat.consigne(of.id, self.etat.operation_poste.get(self.poste_charge))
+        if consigne:
+            texte(mini, f"Consigne : {consigne}", taille=T.TAILLE_LEGENDE, couleur=T.ALERTE_TEXTE, wraplength=260,
+                  justify="left").pack(fill=tk.X, padx=T.ESPACE_M)
         barre = ctk.CTkProgressBar(mini, height=6, corner_radius=3, fg_color=T.BORDURE,
                                    progress_color=T.SUCCES_VIF if etat_colonne == "terminee" else T.ALERTE)
         barre.set(min(scans / of.qte, 1) if of.qte else 0)

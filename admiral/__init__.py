@@ -1,3 +1,3 @@
-"""Admiral v2 : suivi d'atelier (MES) Sotraglace."""
+"""Admiral v2 : suivi d'atelier (MES)."""
 
-__version__ = "2.2.0"
+__version__ = "2.3.0"

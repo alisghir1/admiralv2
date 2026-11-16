@@ -8,6 +8,10 @@ Clés reconnues dans config_poste.json :
 - "chef_atelier"    : nom du chef d'atelier connecté sur ce PC (écrit par l'application)
 - "code_chef_atelier" : code d'accès « Chef d'atelier » tant qu'aucun chef n'est créé dans Administration (défaut : 1111)
 - "actualisation_sage_minutes" : relecture automatique du dossier Sage (facultatif ; défaut : 3 ; 0 : jamais)
+- "douchette_port"  : douchette réglée en port COM, ex. "COM3", ou "auto" (le seul port USB branché) ; facultatif :
+                      sans cette clé, la douchette tape comme un clavier (réglage d'usine)
+- "douchette_vitesse" : vitesse du port COM (facultatif ; défaut : 9600)
+- "imprimer_apres_creation" : case « Imprimer la fiche suiveuse » de la création d'OF (écrit par l'application)
 Un chemin relatif est résolu par rapport au dossier de l'application.
 """
 import json
@@ -80,6 +84,19 @@ def code_bureau_etude(config):
 
 def code_chef_atelier(config):
     return str(config.get("code_chef_atelier") or CODE_CHEF_ATELIER_DEFAUT)
+
+
+def douchette_port(config):
+    """Port COM de la douchette ("COM3", "auto") ou None : douchette en mode clavier."""
+    port = str(config.get("douchette_port") or "").strip()
+    return port or None
+
+
+def douchette_vitesse(config):
+    try:
+        return int(config.get("douchette_vitesse", 9600))
+    except (TypeError, ValueError):
+        return 9600
 
 
 def actualisation_sage_minutes(config):

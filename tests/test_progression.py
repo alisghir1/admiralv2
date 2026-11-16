@@ -40,13 +40,14 @@ class VerifierScan(unittest.TestCase):
         of, e = etat()
         ok, motif, _ = p.verifier_scan(e, of, "USI", "USI1")
         self.assertFalse(ok)
-        self.assertIn("ne passe pas par l'opération USI", motif)
+        self.assertIn("ne passe pas par ce poste (USI1", motif)
+        self.assertIn("Parcours prévu par le bureau d'étude", motif)
 
     def test_poste_non_assigne(self):
         of, e = etat(gammes=[("OF-1", "DEC", "DEC2")])
         ok, motif, _ = p.verifier_scan(e, of, "DEC", "DEC1")
         self.assertFalse(ok)
-        self.assertIn("assigné au poste DEC2", motif)
+        self.assertIn("assignée au poste DEC2 par le bureau d'étude", motif)
 
     def test_poste_sans_operation(self):
         of, e = etat()

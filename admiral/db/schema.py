@@ -193,6 +193,11 @@ def _migration_7_chefs_atelier(conn):
     ''')
 
 
+def _migration_8_consignes(conn):
+    """Consigne du Bureau d'étude pour chaque étape d'un OF (affichée et imprimée au poste concerné)."""
+    _ajouter_colonne(conn, "OF_Gammes", "Consigne", "TEXT")
+
+
 MIGRATIONS = [
     _migration_1_tables,
     _migration_2_index,
@@ -201,6 +206,7 @@ MIGRATIONS = [
     _migration_5_lignes_uniques,
     _migration_6_copie_sage,
     _migration_7_chefs_atelier,
+    _migration_8_consignes,
 ]
 
 VERSION_SCHEMA = len(MIGRATIONS)
@@ -228,17 +234,22 @@ def initialiser(conn, postes_par_defaut=True):
             conn.executemany("INSERT OR IGNORE INTO Postes (CodPost, DesPost, RefOp) VALUES (?, ?, ?)", POSTES_PAR_DEFAUT)
 
 
-def sauvegarder_avant_migration(conn, chemin):
-    """Copie de la base dans sauvegardes/ (à côté de la base) avant une mise à niveau du schéma. Retourne le chemin."""
+def sauvegarder(conn, chemin, motif):
+    """Copie de la base dans sauvegardes/ (à côté de la base), nommée d'après le motif et l'heure. Retourne le chemin."""
     dossier = os.path.join(os.path.dirname(os.path.abspath(chemin)), "sauvegardes")
     os.makedirs(dossier, exist_ok=True)
     nom = os.path.splitext(os.path.basename(chemin))[0]
-    copie = os.path.join(dossier, f"{nom}_v{version(conn)}_avant_v{VERSION_SCHEMA}_{datetime.now():%Y-%m-%d_%H%M%S}.db")
+    copie = os.path.join(dossier, f"{nom}_{motif}_{datetime.now():%Y-%m-%d_%H%M%S}.db")
     destination = sqlite3.connect(copie)
     with destination:
         conn.backup(destination)
     destination.close()
     return copie
+
+
+def sauvegarder_avant_migration(conn, chemin):
+    """Copie de la base dans sauvegardes/ (à côté de la base) avant une mise à niveau du schéma. Retourne le chemin."""
+    return sauvegarder(conn, chemin, f"v{version(conn)}_avant_v{VERSION_SCHEMA}")
 
 
 def ouvrir(chemin):

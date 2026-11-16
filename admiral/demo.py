@@ -68,7 +68,7 @@ def creer(dossier, ecraser=False):
         depot.enregistrer_produit(ref, designation, gamme)
 
     dans = lambda jours: (date.today() + timedelta(days=jours)).isoformat()
-    vitr = [("DEC", None), ("FAC", "FAC1"), ("TRE", None)]
+    vitr = [("DEC", None), ("FAC", "FAC1", "Joint plat poli, angles cassés"), ("TRE", None)]
     feuille = [("DEC", None), ("USI", None), ("TRE", None)]
     miroir = [("DEC", None), ("FAC", None)]
 
@@ -91,7 +91,8 @@ def creer(dossier, ecraser=False):
     # CC240005 : commande sans OF (à créer au Bureau d'Étude)
     # CC240006 : une étagère à 4 opérations, un OF annulé
     g = depot.creer_of("CC240006", "FEUILLE-CLAIR-10", "Étagère Verre Trempé 10mm", "Joints plats", 10,
-                       "CC240006-1000", [("DEC", None), ("FAC", None), ("TRE", None), ("EXP", None)], 800, 300, "10", dans(7))
+                       "CC240006-1000", [("DEC", None), ("FAC", None, "4 chants polis, coins arrondis R5"), ("TRE", None),
+                                         ("EXP", None, "Caisse bois, intercalaires liège")], 800, 300, "10", dans(7))
     h = depot.creer_of("CC240006", "MIROIR-ARGENT-4", "Miroir Cabine Essayage", "Remplacé par une autre référence", 4,
                        "CC240006-2000", miroir, 1800, 600, "4")
     depot.changer_statut_of(h, "annule")

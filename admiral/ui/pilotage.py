@@ -16,6 +16,7 @@ from ..domain import pilotage, tri
 from ..domain.synthese import format_date
 from ..journal import journal
 from .composants import BandeauCommande, bouton, carte, champ, lier_clic, menu_tri, tableau, texte, titre
+from .impression import ImpressionDialog
 from .widgets import FenetreDialogue, capturer_focus, centrer_fenetre, maj_tags_selection
 
 # Filtre des commandes : libellé -> test sur ResumeCommande (et part moyenne faite)
@@ -120,6 +121,11 @@ class PilotageMixin:
         self.btn_valider_commande = bouton(entete_cmd, "Valider la commande", self.valider_commande_pilotage,
                                            style="secondaire", state="disabled", width=180)
         self.btn_valider_commande.pack(side=tk.RIGHT)
+        self.btn_imprimer_pilotage = bouton(entete_cmd, "Imprimer", self.imprimer_pilotage, style="secondaire",
+                                            state="disabled", width=100)
+        self.btn_imprimer_pilotage.pack(side=tk.RIGHT, padx=T.ESPACE_S)
+        bloc_titre.pack_forget()   # replacé après les boutons : un nom de client long ne les écrase plus
+        bloc_titre.pack(side=tk.LEFT, fill=tk.X, expand=True)
         texte(droite, "Sélectionnez un ou plusieurs OF (Ctrl ou Maj + clic), puis validez-les en entier ou une seule étape.",
               taille=T.TAILLE_LEGENDE).pack(fill=tk.X, padx=T.ESPACE_L, pady=(T.ESPACE_XS, T.ESPACE_S))
 
@@ -213,6 +219,7 @@ class PilotageMixin:
             self.bandeau_pilotage.maj(None)
             self.lbl_pil_resume.configure(text="")
             self.btn_valider_commande.configure(state="disabled")
+            self.btn_imprimer_pilotage.configure(state="disabled")
             self._maj_selection_pilotage()
             return
         client = self.sage.client(cde, "")
@@ -231,10 +238,21 @@ class PilotageMixin:
                                     values=(of.id, of.design, of.qte, pilotage.texte_etapes(self.etat, of, libelles), libelle))
         restes = [of for of in ofs if not self.etat.termine(of)]
         self.btn_valider_commande.configure(state="normal" if restes else "disabled")
+        self.btn_imprimer_pilotage.configure(state="normal")
         garder = [i for i in ofs_selectionnes if self.tree_pil_of.exists(i)]
         if garder:
             self.tree_pil_of.selection_set(garder)
         self._maj_selection_pilotage()
+
+    def imprimer_pilotage(self):
+        """Commande choisie : sa fiche, ou les fiches des OF sélectionnés (tous ses OF si aucun n'est sélectionné)."""
+        cde = self._commande_pilotage()
+        if cde is None:
+            return
+        choisis = [of.id for of in self._ofs_pilotage_selectionnes()]
+        ids = choisis or [of.id for of in self.etat.ofs_par_cde.get(cde, [])]
+        ImpressionDialog(self.root, self, f"Impression · commande {cde}", cde=cde, ids_of=ids,
+                         coches=("suiveuses",) if choisis else ("commande",))
 
     def _ofs_pilotage_selectionnes(self):
         return [self.etat.ofs[i] for i in self.tree_pil_of.selection() if i in self.etat.ofs]

@@ -7,7 +7,7 @@ from tkinter import ttk
 
 import customtkinter as ctk
 
-from .. import __version__, config as cfg
+from .. import __version__, config as cfg, douchette
 from .. import theme as T
 from ..db import schema
 from ..db.depot import Depot
@@ -28,6 +28,7 @@ DELAI_RECHERCHE_MS = 250
 SURVEILLANCE_BASE_MS = 5000   # les écritures des autres postes (OF corrigé, scans…) apparaissent ici en 5 s au plus
 DELAI_SUIVI_LECTURE_MS = 500     # relecture automatique de Sage : la lecture en arrière-plan est-elle finie ?
 DELAI_REPORT_ECRANS_MS = 5_000   # écrans occupés (fenêtre ouverte, lignes sélectionnées) : nouvel essai
+DELAI_DOUCHETTE_COM_MS = 150     # douchette en port COM : codes lus par le fil d'arrière-plan
 
 
 class Onglets(ctk.CTkTabview):
@@ -58,7 +59,7 @@ class Onglets(ctk.CTkTabview):
             pass
 
 
-class SotraglaceApp(AtelierMixin, SyntheseMixin, GenerationOFMixin, MatriceMixin, ChargeMixin, AdministrationMixin,
+class AdmiralApp(AtelierMixin, SyntheseMixin, GenerationOFMixin, MatriceMixin, ChargeMixin, AdministrationMixin,
                     PilotageMixin):
     """Application. Les écrans sont des mixins qui partagent :
     - self.depot : accès à la base (toutes les requêtes SQL)
@@ -90,8 +91,13 @@ class SotraglaceApp(AtelierMixin, SyntheseMixin, GenerationOFMixin, MatriceMixin
 
         self.chef_actuel = self.config.get('chef_atelier') or cfg.CHEF_PAR_DEFAUT
         self.poste_actuel = poste or self.load_config()
+        # Douchette : reconnue à sa vitesse de frappe dans toutes les fenêtres d'Admiral, ou lue sur son port COM
+        self._detecteur_scan = douchette.DetecteurScan()
+        self._anti_doublon = douchette.AntiDoublon()
+        port = cfg.douchette_port(self.config)
+        self.douchette_com = douchette.DouchetteSerie(port, cfg.douchette_vitesse(self.config)).demarrer() if port else None
 
-        self.root.title(f"Admiral {__version__} · Suivi d'atelier Sotraglace")   # version visible : bonne livraison
+        self.root.title(f"Admiral {__version__} · Suivi d'atelier")   # version visible : bonne livraison
         self.root.geometry("1366x820")
         self.root.minsize(1180, 720)
         def _maximize_safe():
@@ -113,6 +119,9 @@ class SotraglaceApp(AtelierMixin, SyntheseMixin, GenerationOFMixin, MatriceMixin
         self._planifier_lecture_sage()
         self._version_base = self.depot.version_donnees()
         self._apres(SURVEILLANCE_BASE_MS, self._surveiller_base)
+        self.root.bind_all("<Key>", self._touche_globale, add="+")
+        if self.douchette_com is not None:
+            self._apres(DELAI_DOUCHETTE_COM_MS, self._lire_douchette_com)
 
     # --- État partagé ---
 
@@ -196,6 +205,72 @@ class SotraglaceApp(AtelierMixin, SyntheseMixin, GenerationOFMixin, MatriceMixin
         if event.char and event.char.isprintable():
             self.scan_entry.focus_set()
             self.scan_entry.insert("end", event.char)
+
+    # --- Douchette reconnue partout ---
+
+    def _est_champ_scan(self, widget):
+        return str(widget).startswith(str(self.scan_entry))
+
+    def _touche_globale(self, event):
+        """Toutes les touches d'Admiral, fenêtres ouvertes comprises. Une douchette tape un code entier en quelques
+        millisecondes puis Entrée : reconnue à cette vitesse, le scan est traité où que soit le curseur (champ de
+        recherche, fenêtre ouverte), et le code tapé par erreur dans un champ en est retiré. Au champ de scan,
+        on_scan s'en charge déjà : rien n'est traité deux fois."""
+        if self.est_pilotage:
+            return None
+        if event.keysym in ("Return", "KP_Enter"):
+            code, widgets = self._detecteur_scan.entree(event.time)
+            if code and not self._est_champ_scan(event.widget):
+                self._retirer_frappe(widgets)
+                self.scan_douchette(code)
+                return "break"
+            return None
+        if event.char and event.char.isprintable():
+            self._detecteur_scan.caractere(event.char, event.time, event.widget)
+        return None
+
+    @staticmethod
+    def _retirer_frappe(widgets):
+        """Retire des champs de saisie les caractères que la douchette y a tapés."""
+        compte = {}
+        for widget in widgets:
+            if isinstance(widget, (tk.Entry, ttk.Entry, tk.Text)):
+                compte[widget] = compte.get(widget, 0) + 1
+        for widget, nombre in compte.items():
+            try:
+                if isinstance(widget, tk.Text):
+                    widget.delete(f"insert-{nombre}c", "insert")
+                else:
+                    fin = widget.index("insert")
+                    widget.delete(max(0, fin - nombre), fin)
+            except tk.TclError:
+                pass
+
+    def _lire_douchette_com(self):
+        """Douchette en port COM : les codes arrivent même quand Admiral n'est pas au premier plan ;
+        la fenêtre revient alors devant pour montrer le résultat."""
+        try:
+            for code in self.douchette_com.codes():
+                if not self.est_pilotage:
+                    self._ramener_devant()
+                    self.scan_douchette(code)
+            if not self.est_pilotage:
+                self._maj_etat_douchette()
+        except tk.TclError:   # fenêtre en cours de fermeture
+            return
+        except Exception:
+            journal().exception("Douchette en port COM")
+        self._apres(DELAI_DOUCHETTE_COM_MS, self._lire_douchette_com)
+
+    def _ramener_devant(self):
+        try:
+            if self.root.state() == "iconic":
+                self.root.deiconify()
+            self.root.lift()
+            self.root.attributes("-topmost", True)
+            self._apres(400, lambda: self.root.attributes("-topmost", False))
+        except tk.TclError:
+            pass
 
     # --- Poste de travail ---
 
@@ -479,7 +554,7 @@ class SotraglaceApp(AtelierMixin, SyntheseMixin, GenerationOFMixin, MatriceMixin
         entete.pack(fill=tk.X, padx=T.ESPACE_L, pady=(T.ESPACE_M, 0))
 
         ctk.CTkLabel(entete, text="Admiral", font=T.police(T.TAILLE_TITRE + 2, gras=True), text_color=T.TITRE).pack(side=tk.LEFT)
-        texte(entete, "Sotraglace · suivi d'atelier").pack(side=tk.LEFT, padx=(T.ESPACE_S, T.ESPACE_XL))
+        texte(entete, "suivi d'atelier").pack(side=tk.LEFT, padx=(T.ESPACE_S, T.ESPACE_XL))
         self.lbl_title = ctk.CTkLabel(entete, text="", height=34, corner_radius=17, fg_color=T.SURFACE,
                                       font=T.police(T.TAILLE_CORPS, gras=True), text_color=T.TEXTE)
         self.lbl_title.pack(side=tk.LEFT)

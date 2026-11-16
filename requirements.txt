@@ -2,3 +2,7 @@ customtkinter==6.0.0
 pillow==12.3.0
 # Import du référentiel Excel (onglet Administration et setup_db.py)
 openpyxl
+# Impression : PDF et codes-barres Code 128 (fiches d'OF, de commande, listes de travail, étiquettes)
+reportlab>=4.2,<5
+# Douchette réglée en port COM (facultatif : clé douchette_port de config_poste.json)
+pyserial>=3.5,<4

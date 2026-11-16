@@ -44,6 +44,23 @@ def lancer(root, app, resultat):
                 app.tree_cmd.selection_set(commandes[0])
                 app.on_order_select()
             app.process_scan("AUTOTEST-CODE-INCONNU")   # chemin d'erreur, n'écrit rien
+            from .domain import codes
+            app.process_scan(codes.CODE_ESSAI)          # page d'essai de la douchette, n'écrit rien
+            app.process_scan("TEST)à&é\"'(-è_ç)QWAZ?")  # même code tapé en clavier américain : corrigé
+            if app.lbl_scan_status.cget("text") != "Douchette en clavier anglais":
+                raise RuntimeError("le code d'essai tapé en clavier américain n'est pas reconnu")
+
+            # Douchette reconnue à sa vitesse de frappe, curseur dans la recherche : le code d'essai est traité
+            class Touche:
+                def __init__(self, temps, char="", keysym=""):
+                    self.widget, self.time, self.char, self.keysym = app.search_entry._entry, temps, char, keysym or char
+            for i, char in enumerate(codes.CODE_ESSAI):
+                app._touche_globale(Touche(1000 + 3 * i, char))
+            app._touche_globale(Touche(1100, keysym="Return"))
+            if app.lbl_scan_status.cget("text") != "Douchette bien réglée":
+                raise RuntimeError("scan de douchette non reconnu hors du champ de scan")
+            from serial.tools import list_ports   # douchette en port COM : pyserial embarqué dans l'exe
+            log.info("Autotest : douchette OK (%d ports COM)", len(list_ports.comports()))
             root.update()
             log.info("Autotest : poste %s, atelier OK (%d commandes, %d cartes)", app.get_codpost(), len(commandes), len(app.cartes))
 
@@ -57,7 +74,8 @@ def lancer(root, app, resultat):
                 app.on_main_tab_changed()
                 root.update()
                 log.info("Autotest : Bureau d'étude, onglet %s OK", onglet)
-            for section in ("Produits et gammes", "Opérations", "Postes", "Chefs d'atelier", "Import Excel"):
+            from .ui.administration import SECTIONS
+            for section in SECTIONS:
                 app._afficher_section_admin(section)
                 root.update()
 
@@ -93,6 +111,28 @@ def lancer(root, app, resultat):
             root.update()
             log.info("Autotest : relecture automatique de Sage OK (%d commandes)", len(app.sage.entetes))
 
+            # Impression : un PDF de chaque document (reportlab et Code 128 embarqués dans l'exe), sans l'ouvrir
+            import os
+            import tempfile
+            from . import pdf
+            from .domain import documents
+            from .ui.impression import referentiel
+            etat = app.recharger_etat()
+            en_service = etat.ofs_en_service()
+            postes = [code for code, _ in app.depot.lister_postes(trier=True)]
+            choix = documents.Choix(cde=en_service[0].cde if en_service else None,
+                                    ids_of=tuple(of.id for of in en_service[:3]), fiche_commande=True,
+                                    fiches_suiveuses=True, fiches_etape=True, etiquettes=True, par_piece=True,
+                                    postes=tuple(postes))
+            docs = documents.assembler(choix, etat, app.sage, *referentiel(app.depot))
+            docs.append(documents.page_essai(etat, app.sage))
+            with tempfile.TemporaryDirectory() as dossier:
+                chemin = pdf.generer(os.path.join(dossier, "autotest.pdf"), docs)
+                taille = os.path.getsize(chemin)
+            if taille < 2000:
+                raise RuntimeError(f"PDF d'impression trop petit ({taille} octets)")
+            log.info("Autotest : impression OK (%d documents, %d octets)", len(docs), taille)
+
             # Fenêtres en dernier : rien n'est rafraîchi après leur fermeture (sous Windows, traiter les
             # événements d'une fenêtre fermée aussitôt ouverte peut faire planter Tk)
             of = next(iter(app.etat.ofs.values()), None)
@@ -102,6 +142,9 @@ def lancer(root, app, resultat):
                 from .ui.pilotage import ValidationDialog
                 fenetres.append(ValidationDialog(root, app.depot, app.etat, [of], "auto-vérification", par_etape=True))
                 fenetres += [ModifierOfDialog(root, app.depot, of, sage=app.sage, cloturees=app.etat.cloturees), HistoriqueDialog(root, of, app.depot.historique_scans(of.id), app.depot.historique_validations(of.id), app.depot.libelles_operations())]
+            from .ui.impression import ImpressionDialog
+            fenetres.append(ImpressionDialog(root, app, "Impression", cde=of.cde if of else None,
+                                             ids_of=[of.id] if of else [], postes=postes, coches=("liste",)))
             for fenetre in fenetres:
                 fenetre.destroy()
             log.info("Autotest : %d fenêtres OK", len(fenetres))

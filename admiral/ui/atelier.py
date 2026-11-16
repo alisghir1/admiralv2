@@ -1,4 +1,6 @@
 """Écran Atelier : commandes du poste, cartes d'OF, bandeau de scan."""
+import sys
+import time
 import tkinter as tk
 from datetime import date
 from tkinter import messagebox
@@ -6,12 +8,13 @@ from tkinter import messagebox
 import customtkinter as ctk
 
 from .. import theme as T
-from ..domain import progression, sage, tri
+from ..domain import codes, progression, sage, tri
 from ..domain.synthese import format_date
 from ..journal import journal
 from .carte_of import CarteOF, VueEtape, VueLigne, VueOF
 from .composants import BandeauCommande, bouton, carte, champ, defiler_vers, menu_tri, tableau, texte, titre
 from .dialogs import HistoriqueDialog
+from .impression import ImpressionDialog
 from .widgets import FenetreDialogue, get_icon, maj_tags_selection
 
 FILTRES_COMMANDES = {"Toutes": None, "En cours": "encours", "À faire": "pas_demarre", "Terminées": "terminee"}
@@ -25,7 +28,7 @@ COULEURS_BANDEAU = {
     "warning": (T.ALERTE, T.FOND, T.FOND),
     "default": (T.CARTE, T.TEXTE, T.TEXTE_ATTENUE),
 }
-MESSAGE_ATTENTE = ("Prêt à scanner", "Scannez le code d'un OF (OF261234-01) ou d'une commande (CMD-CC261234)")
+MESSAGE_ATTENTE = ("Prêt à scanner", "Scannez le code-barres d'un OF, d'un article ou d'une commande")
 
 
 class AtelierMixin:
@@ -56,8 +59,12 @@ class AtelierMixin:
         self.lbl_nb_commandes = texte(entete, "", taille=T.TAILLE_CORPS)
         self.lbl_nb_commandes.pack(side=tk.RIGHT)
 
-        self.search_entry = champ(panneau, "Rechercher : commande, client, réf. client…")
-        self.search_entry.pack(fill=tk.X, padx=T.ESPACE_L)
+        # Recherche, et à côté l'impression du poste (liste de travail, fiches d'étape de la commande affichée)
+        ligne_recherche = ctk.CTkFrame(panneau, fg_color="transparent")
+        ligne_recherche.pack(fill=tk.X, padx=T.ESPACE_L)
+        bouton(ligne_recherche, "Imprimer", self.imprimer_poste, style="secondaire", width=96).pack(side=tk.RIGHT)
+        self.search_entry = champ(ligne_recherche, "Rechercher : commande, client, réf. client…")
+        self.search_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, T.ESPACE_S))
         self.search_entry.bind("<KeyRelease>", self.on_search_change)
 
         self.filtre_commandes = ctk.CTkSegmentedButton(
@@ -91,15 +98,21 @@ class AtelierMixin:
         bloc_tri, self.tri_cartes = menu_tri(entete, tri.TRIS_OF[:-1], self._retrier_cartes, largeur=160)
         bloc_tri.pack(side=tk.RIGHT, padx=(0, T.ESPACE_L))
         # Réf. client, délai et observation de Sage (la date de commande ne sert pas à l'atelier)
-        self.bandeau_commande = BandeauCommande(panneau, avec_date=False)
-        self.bandeau_commande.pack(fill=tk.X, padx=T.ESPACE_L, pady=(0, T.ESPACE_S))
+        # Sous le titre : infos Sage, et « Terminer la commande » (tous ses OF à ce poste, après confirmation)
+        ligne_bandeau = ctk.CTkFrame(panneau, fg_color="transparent")
+        ligne_bandeau.pack(fill=tk.X, padx=T.ESPACE_L, pady=(T.ESPACE_XS, T.ESPACE_S))
+        self.btn_terminer_commande = bouton(ligne_bandeau, "Terminer la commande", self.terminer_commande_poste,
+                                            style="secondaire", width=180, height=32, state="disabled")
+        self.btn_terminer_commande.pack(side=tk.RIGHT)
+        self.bandeau_commande = BandeauCommande(ligne_bandeau, avec_date=False)
+        self.bandeau_commande.pack(side=tk.LEFT, fill=tk.X, expand=True)
 
         self.zone_cartes = ctk.CTkScrollableFrame(panneau, fg_color="transparent", scrollbar_button_color=T.BORDURE,
                                                   scrollbar_button_hover_color=T.BORDURE_SURVOL)
         self.zone_cartes.pack(fill=tk.BOTH, expand=True, padx=T.ESPACE_S, pady=(0, T.ESPACE_S))
         self.lbl_vide = ctk.CTkLabel(self.zone_cartes, text="", font=T.police(T.TAILLE_SOUS_TITRE),
                                      text_color=T.TEXTE_ATTENUE, wraplength=520, justify="center")
-        self._afficher_vide("Sélectionnez une commande à gauche, ou scannez un code CMD-…")
+        self._afficher_vide("Sélectionnez une commande à gauche, ou scannez le code-barres d'une commande")
 
     def _construire_bandeau_scan(self, parent):
         self.status_frame = ctk.CTkFrame(parent, fg_color=T.CARTE, corner_radius=T.RAYON_CARTE, height=112)
@@ -138,8 +151,19 @@ class AtelierMixin:
         self.status_frame.rowconfigure(0, weight=1)
         self.update_status_bar("default", *MESSAGE_ATTENTE)
 
+    def _maj_etat_douchette(self):
+        """Douchette en port COM : son état remplace l'indicateur de focus (le focus ne compte plus)."""
+        com = self.douchette_com
+        texte_etat = "Douchette COM connectée" if com.connectee else "Douchette COM absente"
+        if self.lbl_focus_scan.cget("text") != texte_etat:
+            self.lbl_focus_scan.configure(text=texte_etat, text_color=T.SUCCES_VIF if com.connectee else T.ALERTE_TEXTE)
+            self.scan_entry.configure(border_color=T.PRIMAIRE if com.connectee else T.ALERTE)
+
     def _maj_indicateur_focus(self, actif):
         # Sans focus, la douchette tape dans le vide : on le signale clairement.
+        if getattr(self, "douchette_com", None) is not None:
+            self._maj_etat_douchette()
+            return
         if actif:
             self.scan_entry.configure(border_color=T.PRIMAIRE)
             self.lbl_focus_scan.configure(text="Douchette active", text_color=T.SUCCES_VIF)
@@ -158,6 +182,7 @@ class AtelierMixin:
         self.btn_simulateur.configure(text_color=couleur_detail)
         if status_type == "error":
             journal().warning("%s %s", message, detail)
+            self._son_erreur()
         # Un message de résultat s'efface seul ; l'erreur reste un peu plus longtemps
         if self._timer_bandeau is not None:
             self.root.after_cancel(self._timer_bandeau)
@@ -165,6 +190,19 @@ class AtelierMixin:
         if status_type != "default":
             duree = T.DUREE_MESSAGE_ERREUR if status_type == "error" else T.DUREE_MESSAGE_SUCCES
             self._timer_bandeau = self.root.after(duree, self._bandeau_au_repos)
+
+    def _son_erreur(self):
+        """Son d'erreur : l'opérateur ne regarde pas toujours l'écran quand il scanne (rien sur une fenêtre masquée)."""
+        try:
+            if not self.root.winfo_viewable():
+                return
+            if sys.platform == "win32":
+                import winsound
+                winsound.MessageBeep(winsound.MB_ICONHAND)
+            else:
+                self.root.bell()
+        except Exception:   # pas de carte son, fenêtre en fermeture : le bandeau rouge suffit
+            pass
 
     def _bandeau_au_repos(self):
         self._timer_bandeau = None
@@ -267,11 +305,12 @@ class AtelierMixin:
         if of.date_besoin:
             besoin = f"En retard · besoin le {format_date(of.date_besoin)}" if retard else f"Besoin le {format_date(of.date_besoin)}"
         return VueOF(of.id, of.prod, of.design, of.dimensions, of.observations, of.qte, mes_scans,
-                     etat_poste, situation, etapes, lignes, of.urgent, besoin, retard)
+                     etat_poste, situation, etapes, lignes, of.urgent, besoin, retard, self.etat.consigne(of.id, mon_op))
 
     def update_lines_view(self, do_piece):
         """Affiche (ou met à jour sur place) les cartes des OF de la commande qui passent par ce poste."""
         mon_op, codpost = self.get_mon_op(), self.get_codpost()
+        self.btn_terminer_commande.configure(state="disabled")
         if do_piece in self.etat.cloturees:
             self._afficher_vide(f"La commande {do_piece} est clôturée : plus rien à produire.")
             self.lbl_resume.configure(text="")
@@ -304,6 +343,8 @@ class AtelierMixin:
 
         faites = sum(min(v.scans, v.qte) for v in vues)
         prevues = sum(v.qte for v in vues)
+        if any(v.etat not in ("terminee", "valide") for v in vues):
+            self.btn_terminer_commande.configure(state="normal")
         self.lbl_resume.configure(text=f"{len(vues)} OF · {faites} / {prevues} pièces")
         if self.of_selectionne not in self.cartes:
             self.of_selectionne = None
@@ -334,47 +375,164 @@ class AtelierMixin:
     def on_scan(self, event):
         qr_text = self.scan_var.get().strip()
         self.scan_var.set("")
+        self._detecteur_scan.oublier()   # déjà traité ici : la détection globale ne le refait pas
         if qr_text:
-            self.process_scan(qr_text)
+            self.scan_douchette(qr_text)
+
+    def scan_douchette(self, code):
+        """Scan venant de la douchette (champ de scan, frappe reconnue ailleurs, port COM) : le même code relu
+        dans la seconde est une double lecture de la douchette, ignorée."""
+        if self._anti_doublon.doublon(codes.lire_scan(code)[0], time.monotonic()):
+            journal().info("Double lecture de la douchette ignorée : %s", code)
+            return
+        self.process_scan(code)
 
     def process_scan(self, qr_code):
+        """Code lu par la douchette (ou le simulateur) : commande, OF, article (ligne de commande) ou page d'essai."""
         if self.est_pilotage:
             return  # pas de scan au Bureau d'étude ni au Chef d'atelier (l'écran Atelier n'y est pas affiché)
-        qr_code = qr_code.strip().upper()
+        code, clavier_corrige = codes.lire_scan(qr_code)
+        if clavier_corrige:
+            journal().warning("Douchette en clavier américain : « %s » relu « %s »", qr_code, code)
         self.recharger_etat()
 
-        # Code commande (CMD-xxxx) : affiche la commande sans enregistrer de scan
-        if qr_code.startswith("CMD-"):
-            do_piece = qr_code[4:]
-            if do_piece not in self.sage.entetes:
-                self.load_sage_data()
-            if do_piece not in self.sage.entetes:
-                self.update_status_bar("error", "Commande introuvable", f"{do_piece} n'est pas dans les exports Sage.")
-                return
-            if self.tree_cmd.exists(do_piece):
-                self.tree_cmd.selection_set(do_piece)
-                self.tree_cmd.see(do_piece)
-                maj_tags_selection(self.tree_cmd)
-            self._afficher_commande(do_piece)
-            self.update_status_bar("progress", f"Commande {do_piece}", self.sage.client(do_piece, ""))
+        if code == codes.CODE_ESSAI:
+            if clavier_corrige:
+                self.update_status_bar("warning", "Douchette en clavier anglais",
+                                       "Admiral corrige la lecture, mais réglez la douchette en clavier français (AZERTY) : "
+                                       "code de configuration dans sa notice.")
+            else:
+                self.update_status_bar("success", "Douchette bien réglée", "Le code d'essai est lu sans erreur.")
             return
 
-        # Code OF : le code-barres est l'identifiant de l'OF (ex. "OF261234-01", ou "OF-1001" avant la numérotation par commande)
-        of = self.etat.ofs.get(qr_code)
-        if not of:
-            self.update_status_bar("error", "Code inconnu", f"« {qr_code} » ne correspond à aucun OF ni aucune commande.")
+        # Code OF : le numéro de l'OF (« OF261234-01 », ou « OF-1001 » avant la numérotation par commande)
+        of = self.etat.ofs.get(code)
+        if of:
+            self._scanner_of(of)
             return
 
-        ok, motif, scans_actuels = progression.verifier_scan(self.etat, of, self.get_mon_op(), self.get_codpost())
+        # Code commande : son numéro (« CC261234 ») ou l'ancien « CMD-CC261234 » : affiche la commande, sans scan
+        cde = codes.commande_du_code(code)
+        if cde in self.sage.entetes or code.startswith(codes.PREFIXE_ANCIEN_COMMANDE):
+            self._scanner_commande(cde)
+            return
+
+        # Code article : « CC261234-1000 », une ligne de commande, comptée dans l'OF qui la contient
+        cde_article = codes.commande_de_l_article(code)
+        if cde_article and code in self.sage.lignes:
+            self._scanner_article(cde_article, code)
+            return
+
+        self.update_status_bar("error", "Code inconnu",
+                               f"« {code} » ne correspond à aucun OF, article ou commande."
+                               + (" La douchette tape en clavier anglais : réglez-la en français." if clavier_corrige else ""))
+
+    def _scanner_commande(self, do_piece):
+        """Commande scannée : affichée avec ses OF de ce poste (« Terminer la commande » les termine tous),
+        ou erreur si aucun de ses OF ne passe par ce poste."""
+        if do_piece not in self.sage.entetes:
+            self.load_sage_data()
+        if do_piece not in self.sage.entetes:
+            self.update_status_bar("error", "Commande introuvable", f"{do_piece} n'est pas dans les commandes Sage en cours.")
+            return
+        ofs = self.etat.ofs_par_cde.get(do_piece, [])
+        mon_op, codpost = self.get_mon_op(), self.get_codpost()
+        ici = [of for of in ofs if progression.index_etape(self.etat.gamme(of.id), mon_op, codpost) != -1]
+        if do_piece in self.etat.cloturees:
+            self.update_status_bar("error", "Commande clôturée", f"La commande {do_piece} est clôturée : plus rien à produire.")
+            return
+        if not ofs:
+            self.update_status_bar("error", "Commande sans OF",
+                                   f"La commande {do_piece} n'a pas encore d'OF : le bureau d'étude doit les créer.")
+            return
+        if not ici:
+            libelles = self.depot.libelles_operations()
+            parcours = sorted({progression.texte_parcours(self.etat.gamme(of.id), libelles) for of in ofs})
+            self.update_status_bar("error", "Pas pour ce poste",
+                                   f"Aucun OF de la commande {do_piece} ne passe par ce poste ({codpost}). "
+                                   f"Parcours prévu par le bureau d'étude : {' / '.join(parcours)}")
+            return
+        if self.tree_cmd.exists(do_piece):
+            self.tree_cmd.selection_set(do_piece)
+            self.tree_cmd.see(do_piece)
+            maj_tags_selection(self.tree_cmd)
+        self._afficher_commande(do_piece)
+        restes = sum(max(of.qte - self.etat.compter(of.id, mon_op), 0) for of in ici)
+        self.update_status_bar("progress", f"Commande {do_piece}",
+                               f"{self.sage.client(do_piece, '')} · {len(ici)} OF à ce poste · {restes} pièce"
+                               f"{'s' if restes > 1 else ''} à faire · « Terminer la commande » pour tout terminer ici")
+
+    def terminer_commande_poste(self):
+        """Termine à ce poste tous les OF de la commande affichée (comme « Terminer » sur chaque carte : les étapes
+        précédentes non finies sont complétées), après confirmation."""
+        cde = self.commande_affichee
+        if not cde:
+            return
+        self.recharger_etat()
+        mon_op, codpost = self.get_mon_op(), self.get_codpost()
+        a_finir = [of for of in self.etat.ofs_par_cde.get(cde, [])
+                   if self.etat.en_service(of) and progression.index_etape(self.etat.gamme(of.id), mon_op, codpost) != -1
+                   and not self.etat.validation(of.id, mon_op) and self.etat.compter(of.id, mon_op) < of.qte]
+        if not a_finir:
+            self.update_status_bar("warning", "Rien à terminer", f"Les OF de la commande {cde} sont déjà terminés à ce poste.")
+            return
+        pieces = sum(of.qte - self.etat.compter(of.id, mon_op) for of in a_finir)
+        if not messagebox.askyesno(
+                "Terminer la commande", f"Terminer à ce poste {len(a_finir)} OF de la commande {cde} ({pieces} pièce"
+                f"{'s' if pieces > 1 else ''}) ?\n\n" + ", ".join(of.id for of in a_finir[:6])
+                + (" …" if len(a_finir) > 6 else "")
+                + "\n\nLes étapes précédentes non finies sont complétées, comme avec « Terminer » sur une carte."):
+            return
+        for of in a_finir:
+            reste = of.qte - self.etat.compter(of.id, mon_op)
+            plan = progression.plan_rattrapage(self.etat, of, mon_op, codpost, reste)
+            self.depot.ajouter_scans(of.id, plan)
+            journal().info("Commande %s terminée au poste %s : %s %s", cde, codpost, of.id, plan)
+            self.recharger_etat()
+        self._update_single_cmd_in_tree(cde)
+        self.update_lines_view(cde)
+        self.update_status_bar("success", "Commande terminée à ce poste", f"{cde} · {len(a_finir)} OF · {pieces} pièces")
+
+    def _scanner_article(self, cde, code):
+        """Une pièce de la ligne de commande scannée, comptée sur cette ligne dans son OF."""
+        id_of = self.depot.lignes_affectees(cde).get(code)
+        of = self.etat.ofs.get(id_of) if id_of else None
+        numero = code.rsplit("-", 1)[-1]
+        if of is None:
+            self.update_status_bar("error", "Article sans OF", f"La ligne {numero} de la commande {cde} n'est dans aucun OF "
+                                                               "en cours : le Bureau d'étude doit d'abord créer l'OF.")
+            return
+        enfants = sage.lignes_enfants(self.sage, of.cde, of.lignes_sage)
+        ligne = next(((cle, qte, l) for cle, qte, l in enfants if codes.code_article(of.cde, cle) == code), None)
+        if ligne is None:
+            self._scanner_of(of)
+            return
+        self._scanner_of(of, ligne, enfants)
+
+    def _scanner_of(self, of, ligne=None, enfants=()):
+        """Enregistre une pièce de l'OF à ce poste ; ligne : (clé stockée, quantité, ligne Sage) pour un article."""
+        mon_op, codpost = self.get_mon_op(), self.get_codpost()
+        ok, motif, scans_actuels = progression.verifier_scan(self.etat, of, mon_op, codpost, self.depot.libelles_operations())
+        child_key, compte = None, f"{scans_actuels + 1} / {of.qte}"
+        if ok and ligne is not None:
+            child_key, qte_ligne, _ = ligne
+            faites_ligne = progression.repartir_scans(self.etat, of.id, mon_op, list(enfants)).get(child_key, 0)
+            if faites_ligne >= qte_ligne:
+                ok, motif = False, f"Ligne {child_key.rsplit('-', 1)[-1]} déjà complète à ce poste ({faites_ligne}/{qte_ligne})"
+            compte = f"{faites_ligne + 1} / {qte_ligne}"
         if not ok:
-            self.update_status_bar("error", "Scan refusé", f"{motif}", f"{scans_actuels} / {of.qte}")
+            if ligne is not None:   # article : on cite la ligne scannée
+                motif = f"Article {codes.code_article(of.cde, ligne[0])} · {motif}"
+            hors_parcours = progression.index_etape(self.etat.gamme(of.id), mon_op, codpost) == -1
+            self.update_status_bar("error", "Pas pour ce poste" if hors_parcours else "Scan refusé", f"{motif}",
+                                   f"{scans_actuels} / {of.qte}")
             self._montrer_of(of)
             if of.id in self.cartes:
                 self.cartes[of.id].surligner(T.ERREUR)
             return
 
-        self.depot.ajouter_scans(of.id, [(self.get_codpost(), 1)])
-        journal().info("Scan %s au poste %s", of.id, self.get_codpost())
+        self.depot.ajouter_scans(of.id, [(codpost, 1)], child_key)
+        journal().info("Scan %s%s au poste %s", of.id, f" (ligne {child_key})" if child_key else "", codpost)
         self.recharger_etat()
         nouveau_count = scans_actuels + 1
 
@@ -384,10 +542,12 @@ class AtelierMixin:
             self.cartes[of.id].surligner()
 
         detail = f"{of.id} · {of.design} · {of.dimensions}"
+        if child_key is not None:
+            detail = f"{of.id} · ligne {child_key.rsplit('-', 1)[-1]} · {ligne[2].get('DL_Design', '')}"
         if nouveau_count == of.qte:
             self.update_status_bar("success", "OF terminé à ce poste", detail, f"{nouveau_count} / {of.qte}")
         else:
-            self.update_status_bar("success", "Pièce enregistrée", detail, f"{nouveau_count} / {of.qte}")
+            self.update_status_bar("success", "Pièce enregistrée", detail, compte)
 
     def _montrer_of(self, of):
         """Affiche la commande de l'OF, sélectionne sa carte et la fait défiler à l'écran."""
@@ -430,7 +590,7 @@ class AtelierMixin:
         if not of or not self._of_modifiable(of):
             return
         mon_op, codpost = self.get_mon_op(), self.get_codpost()
-        motif = progression.motif_hors_gamme(of.id, self.etat.gamme(of.id), mon_op, codpost)
+        motif = progression.motif_hors_gamme(of.id, self.etat.gamme(of.id), mon_op, codpost, self.depot.libelles_operations())
         if motif:
             messagebox.showwarning("Scan impossible", motif)
             return
@@ -497,6 +657,30 @@ class AtelierMixin:
         self.depot.annuler_scans(scans[:to_remove])
         journal().info("Annulation de %d scan(s) %s (ligne %s)", to_remove, of.id, child_key)
         self._apres_scan_manuel(of, f"{to_remove} scan{'s' if to_remove > 1 else ''} annulé{'s' if to_remove > 1 else ''}")
+
+    # ===================== Impression =====================
+
+    def imprimer_poste(self):
+        """Liste de travail du poste, et les fiches d'étape de la commande affichée pour ce poste."""
+        self.recharger_etat()
+        mon_op, codpost = self.get_mon_op(), self.get_codpost()
+        ids = []
+        if self.commande_affichee:
+            ids = [of.id for of in self.etat.ofs_par_cde.get(self.commande_affichee, [])
+                   if progression.index_etape(self.etat.gamme(of.id), mon_op, codpost) != -1]
+        dialogue = ImpressionDialog(self.root, self, f"Impression · poste {codpost}", ids_of=ids, postes=[codpost],
+                                    etape=mon_op, coches=("liste",))
+        self.root.wait_window(dialogue)
+        self.scan_entry.focus_set()
+
+    def imprimer_of(self, id_of):
+        """Fiche d'étape de cet OF pour ce poste (ou sa fiche suiveuse, ses étiquettes)."""
+        if id_of not in self.etat.ofs:
+            return
+        dialogue = ImpressionDialog(self.root, self, f"Impression · {id_of}", ids_of=[id_of], etape=self.get_mon_op(),
+                                    coches=("etape",))
+        self.root.wait_window(dialogue)
+        self.scan_entry.focus_set()
 
     def ouvrir_historique(self, id_of):
         of = self.etat.ofs.get(id_of)

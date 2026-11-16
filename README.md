@@ -1,6 +1,6 @@
 # Admiral v2
 
-Application de suivi d'atelier (MES) pour Sotraglace : commandes Sage → ordres de fabrication (OF) → scans par poste.
+Application de suivi d'atelier (MES) : commandes Sage → ordres de fabrication (OF) → scans par poste.
 
 ## Fonctionnement
 
@@ -11,6 +11,10 @@ Application de suivi d'atelier (MES) pour Sotraglace : commandes Sage → ordres
 3. À chaque poste, l'opérateur scanne le code-barres de l'OF ; l'avancement se calcule par opération.
    Numéro d'OF : « OF » + numéro de la commande sans « CC » + rang de l'OF dans la commande sur deux chiffres (`OF261234-01`, `OF261234-02`, puis `OF261235-01`…), attribué sous verrou d'écriture (deux PC ne prennent jamais le même). Un OF annulé garde son rang ; un OF supprimé (jamais scanné) libère le sien. Un OF qui change de commande (possible seulement avant tout scan) prend un numéro dans sa nouvelle commande, reporté dans ses gammes, lignes, scans annulés et validations. Les OF créés avant cette numérotation (`OF-1000`…) gardent leur numéro.
 4. Le Chef d'atelier (profil « Chef d'atelier », code personnel) pilote l'atelier et peut valider un OF, une étape ou une commande entière sans scan. Aucun faux scan n'est créé : la validation est enregistrée à part (`ValidationsChef` : chef, date, motif) et comptée comme faite par `EtatAtelier.compter`, donc par tous les écrans. Elle s'annule en restant tracée (onglet Validations). Les chefs et leurs codes se gèrent dans Administration (table `Chefs`) ; tant qu'il n'y en a aucun, le code `code_chef_atelier` (défaut 1111) ouvre l'accès.
+
+5. **Remise à zéro** (Administration › Mise en service, `Depot.remettre_a_zero`) : vide les OF, scans, validations, clôtures et la copie des commandes Sage, garde le référentiel et les chefs d'atelier ; confirmation « VIDER » et copie de la base dans `sauvegardes/` avant. Le classeur est relu aussitôt : seules les commandes en cours reviennent, sans OF. `clear_atelier.py` fait la même chose en ligne de commande.
+6. **Impression** (`domain/documents.py` pour le contenu, `pdf.py` pour le rendu reportlab, `ui/impression.py` pour la fenêtre) : fiche suiveuse d'OF (vue générale), fiche d'étape (un OF vu par un poste, demi-page), fiche commande, liste de travail d'un poste (A4 paysage, par produit), étiquettes d'articles (planche 3 × 7) et page d'essai de la douchette. Noir et blanc, cases à cocher au stylo, codes-barres Code 128 uniques : commande `CC261234`, OF `OF261234-01`, article (ligne de commande) `CC261234-1000` (`domain/codes.py`). Scanner un article compte une pièce sur sa ligne ; une douchette en clavier américain est corrigée et signalée.
+7. **Douchette** (`douchette.py`) : en mode clavier, un scan est reconnu à sa vitesse de frappe (`DetecteurScan`) et traité où que soit le curseur dans Admiral (recherche, fenêtre ouverte), le code tapé dans un champ en est retiré ; en port COM (`douchette_port`), il est lu dans un fil d'arrière-plan et arrive même si Admiral n'est pas au premier plan (la fenêtre revient devant). Le même code relu dans la seconde est ignoré. Un code qui ne passe pas par le poste est refusé avec le parcours prévu par le bureau d'étude, et un son d'erreur. Une commande scannée s'affiche avec ses OF du poste ; « Terminer la commande » les termine tous à ce poste après confirmation. Chaque étape d'un OF peut porter une consigne du Bureau d'étude (`OF_Gammes.Consigne`), affichée sur la carte de l'OF au poste concerné et imprimée.
 
 Profils d'un PC : poste machine (écran Atelier, douchette), Bureau d'étude (code `code_bureau_etude`, tous les onglets de pilotage) ou Chef d'atelier (Synthèse, Pilotage, Charge des postes, Validations). Chaque PC relit la base toutes les 5 s (`PRAGMA data_version`) : ce qu'un autre poste écrit (OF corrigé, scan, validation) apparaît sans action.
 
@@ -35,6 +39,8 @@ Lancement : `Lancer_Admiral.command` (macOS), `python suivi_atelier.py` ou `pyth
   "actualisation_sage_minutes": 3
 }
 ```
+
+Douchette réglée en port COM (facultatif) : `"douchette_port": "COM3"` (ou `"auto"` : le seul port USB branché), `"douchette_vitesse": 9600`. Sans cette clé, la douchette tape comme un clavier.
 
 Seul `poste` est obligatoire (il est écrit par l'application). `base_de_donnees` et `dossier_sage` sont facultatifs : un chemin relatif part du dossier de l'application. Ils permettent de pointer plusieurs postes vers la même base et le même dossier Sage. `actualisation_sage_minutes` aussi (défaut 3 ; 0 : pas de relecture automatique).
 
@@ -61,6 +67,10 @@ admiral/
   domain/synthese.py     indicateurs de l'onglet Synthèse
   domain/pilotage.py     avancement et validations du chef d'atelier (onglet Pilotage)
   domain/tri.py          tri des listes (numéro dans l'ordre naturel, client, état, besoin)
+  domain/codes.py        contenu des codes-barres, lecture d'un scan (correction du clavier américain)
+  domain/documents.py    contenu des documents imprimés (fiches, listes, étiquettes, page d'essai)
+  pdf.py                 rendu PDF des documents (reportlab, Code 128)
+  douchette.py           douchette : scan reconnu à la vitesse de frappe, port COM, double lecture
   ui/app.py              fenêtre principale : en-tête, onglets, état partagé
   ui/atelier.py          onglet Atelier : commandes du poste, cartes d'OF, bandeau de scan
   ui/carte_of.py         carte d'un OF (mise à jour sur place)
@@ -71,6 +81,7 @@ admiral/
   ui/administration.py   onglet Administration (référentiel, chefs d'atelier, import Excel)
   ui/pilotage.py         onglets Pilotage et Validations (chef d'atelier), fenêtre de validation
   ui/dialogs.py          choix du poste, nouvel OF, modification d'OF, historique des scans
+  ui/impression.py       fenêtre d'impression (aperçu dans le lecteur PDF, enregistrement)
   ui/composants.py       cartes, pastilles d'état, boutons, tableaux
   ui/widgets.py          icônes, centrage, focus, sélection dans les tableaux
 tests/                   tests automatisés
@@ -90,7 +101,7 @@ tests/                   tests automatisés
 |---|---|
 | `setup_db.py` | Réinitialise la base et importe le référentiel depuis l'Excel Sage (efface tout, demande confirmation) |
 | `seed_mock_data.py` / `clean_mock_data.py` | Crée / supprime un jeu de données de test |
-| `clear_atelier.py` | Supprime les OF et les scans, garde le référentiel |
+| `clear_atelier.py` | Remet l'atelier à zéro (OF, scans, validations, copie Sage), garde le référentiel et les chefs ; copie de la base avant |
 | `build_exe.bat` | Construit l'exécutable Windows (PyInstaller) |
 | `preparer_livraison.py` | Prépare `livraison_client/Admiral` avec les vraies données (base neuve avec le référentiel, classeur Sage, LISEZMOI) ; il reste à y glisser `Admiral.exe` (GitHub Actions). Ce dossier n'est jamais versionné |
 | `AUDIT_ET_PLAN.md` | Audit et plan de modifications |

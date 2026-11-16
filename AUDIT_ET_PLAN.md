@@ -70,7 +70,7 @@ Le code est un fichier unique de 2 400 lignes, sans test, avec 300 couleurs en d
 - 300 littéraux de couleur, 12 teintes répétées 7 à 44 fois.
 - Pas de `requirements.txt` (dépendances : customtkinter 6, pillow, openpyxl). Pas de test. Pas de log applicatif.
 - Deux définitions de schéma divergentes (`init_db` et `setup_db.py`).
-- `Sotraglace_Suivi_Atelier.exe` (11 Mo) et `.venv` dans le dossier projet.
+- l'ancien exécutable Windows (11 Mo) et `.venv` dans le dossier projet.
 
 ### A4. Import Sage
 - Délimiteur `,` en dur et filtre `DO_Piece.startswith('CC')` : les exports Sage 100 sont souvent en `;` / cp1252 et le préfixe de pièce est paramétrable. À confirmer avec un vrai export.

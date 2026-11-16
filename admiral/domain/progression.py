@@ -12,16 +12,26 @@ def index_etape(gamme, mon_op, codpost):
     return -1
 
 
-def motif_hors_gamme(id_of, gamme, mon_op, codpost):
-    """Message expliquant pourquoi ce poste ne traite pas cet OF, ou None s'il le traite."""
+def texte_parcours(gamme, libelles=None):
+    """« Découpe › Façonnage › Trempe » : le parcours prévu par le bureau d'étude."""
+    libelles = libelles or {}
+    return " › ".join(libelles.get(op) or op for op, _ in gamme) or "aucune opération"
+
+
+def motif_hors_gamme(id_of, gamme, mon_op, codpost, libelles=None):
+    """Message expliquant pourquoi ce poste ne traite pas cet OF, ou None s'il le traite.
+    libelles : {opération: libellé}, pour citer le parcours prévu par le bureau d'étude."""
     if not mon_op:
         return f"Le poste {codpost} n'a pas d'opération configurée"
     if index_etape(gamme, mon_op, codpost) >= 0:
         return None
     autres = [p for op, p in gamme if op == mon_op and p]
+    libelle = (libelles or {}).get(mon_op) or mon_op
     if autres:
-        return f"{id_of} est assigné au poste {', '.join(autres)}"
-    return f"{id_of} ne passe pas par l'opération {mon_op}"
+        return (f"{id_of} : l'étape {libelle} est assignée au poste {', '.join(autres)} par le bureau d'étude, "
+                f"pas à ce poste ({codpost})")
+    return (f"{id_of} ne passe pas par ce poste ({codpost}, {libelle}). "
+            f"Parcours prévu par le bureau d'étude : {texte_parcours(gamme, libelles)}")
 
 
 def repartir_scans(etat, id_of, ref_op, enfants):
@@ -43,14 +53,30 @@ def disponibles(etat, of, gamme, index, mon_op):
     return scans_prec - etat.compter(of.id, mon_op)
 
 
-def verifier_scan(etat, of, mon_op, codpost):
-    """Contrôle d'un scan douchette. Retourne (ok, message, nb scans actuels à ce poste)."""
+def ofs_du_poste(etat, codpost):
+    """OF en service qui ont une étape pour ce poste (assignée à ce poste ou libre) : [(OF, index de l'étape)],
+    dans l'ordre de création. Base de la Charge des postes et de la liste de travail imprimée."""
+    ref_op = etat.operation_poste.get(codpost)
+    if not ref_op:
+        return []
+    resultat = []
+    for of in etat.ofs_en_service():
+        for index, (code_op, assigne) in enumerate(etat.gamme(of.id)):
+            if code_op == ref_op and (not assigne or assigne == codpost):
+                resultat.append((of, index))
+                break
+    return resultat
+
+
+def verifier_scan(etat, of, mon_op, codpost, libelles=None):
+    """Contrôle d'un scan douchette. Retourne (ok, message, nb scans actuels à ce poste).
+    libelles : {opération: libellé}, pour citer le parcours dans le message d'un OF qui ne passe pas ici."""
     if of.annule:
         return False, f"{of.id} a été annulé", 0
     if of.cde in etat.cloturees:
         return False, f"La commande {of.cde} est clôturée", 0
     gamme = etat.gamme(of.id)
-    motif = motif_hors_gamme(of.id, gamme, mon_op, codpost)
+    motif = motif_hors_gamme(of.id, gamme, mon_op, codpost, libelles)
     if motif:
         return False, motif, 0
 

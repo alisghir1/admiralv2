@@ -178,11 +178,12 @@ class _FormulaireOF(FenetreDialogue):
         # Deux colonnes : informations de l'OF à gauche, gamme à droite
         corps = ctk.CTkFrame(cadre, fg_color="transparent")
         corps.pack(fill=tk.BOTH, expand=True, padx=T.ESPACE_XL, pady=(0, T.ESPACE_L))
+        # La gamme est placée d'abord : elle garde sa largeur (postes, consignes, boutons), le formulaire prend le reste
+        self.colonne_gamme = ctk.CTkFrame(corps, fg_color="transparent", width=420)
+        self.colonne_gamme.pack(side=tk.RIGHT, fill=tk.BOTH, padx=(T.ESPACE_XL, 0))
         self.form = ctk.CTkFrame(corps, fg_color="transparent")
         self.form.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         self.form.columnconfigure(1, weight=1)
-        self.colonne_gamme = ctk.CTkFrame(corps, fg_color="transparent", width=420)
-        self.colonne_gamme.pack(side=tk.LEFT, fill=tk.BOTH, padx=(T.ESPACE_XL, 0))
 
         # Boutons en bas de la colonne de droite, à la hauteur de la dernière ligne du formulaire.
         # Posés avant la gamme (côté bas) : ils restent visibles, la gamme prend la place restante.
@@ -358,10 +359,11 @@ class AddOfDialog(_FormulaireOF):
     """Création d'un OF pour une commande. result = ID de l'OF créé, ou None si annulé."""
 
     def __init__(self, parent, depot, cde, client="", default_qte=1, default_design="", default_obs="",
-                 lignes_sage="", longueur="", largeur="", dimensions_sage=False, chants="", infos=None):
+                 lignes_sage="", longueur="", largeur="", dimensions_sage=False, chants="", infos=None, imprimer=False):
         """dimensions_sage : OF issu de lignes de commande, quantité (somme des lignes) et dimensions (Sage)
         imposées : leurs champs ne sont pas proposés, le sous-titre les rappelle, avec leurs chants communs.
-        infos : InfosCommande de la commande (délai rappelé à côté de la date de besoin)."""
+        infos : InfosCommande de la commande (délai rappelé à côté de la date de besoin).
+        imprimer : case « Imprimer la fiche suiveuse » cochée au départ (self.imprimer après validation)."""
         sous_titre = f"Commande {cde}" + (f" · {client}" if client else "")
         if lignes_sage:
             sous_titre += f" · lignes {', '.join(l.rsplit('-', 1)[-1] for l in lignes_sage.split(','))}"
@@ -395,7 +397,13 @@ class AddOfDialog(_FormulaireOF):
         self.maj_aide_besoin(infos)
         if dimensions_sage:
             self.fixer_depuis_lignes(default_qte, longueur, largeur)
-        self.zone_gamme("Décochez les opérations à ne pas faire. Choisissez un poste ou laissez « Libre ».")
+        self.imprimer_var = tk.BooleanVar(value=bool(imprimer))
+        self.imprimer = False
+        ctk.CTkCheckBox(self.colonne_gamme, text="Imprimer la fiche suiveuse après la création", variable=self.imprimer_var,
+                        font=T.police(T.TAILLE_CORPS), text_color=T.TEXTE, fg_color=T.PRIMAIRE, hover_color=T.PRIMAIRE_SURVOL,
+                        border_color=T.BORDURE_SURVOL).pack(side=tk.BOTTOM, fill=tk.X, pady=(T.ESPACE_XS, 0))
+        self.zone_gamme("Décochez les opérations à ne pas faire. Choisissez un poste ou laissez « Libre ». "
+                        "La consigne s'affiche à l'écran du poste de l'étape et s'imprime sur ses fiches.")
         self._message_gamme("Choisissez d'abord un produit.")
 
         capturer_focus(self)
@@ -463,7 +471,11 @@ class AddOfDialog(_FormulaireOF):
                             font=T.police(T.TAILLE_CORPS, gras=True), text_color=T.TEXTE,
                             fg_color=T.PRIMAIRE, hover_color=T.PRIMAIRE_SURVOL, border_color=T.BORDURE_SURVOL).pack(side=tk.LEFT)
             cb_poste.pack(side=tk.RIGHT)
-            self.gamme_vars.append({'code_op': code_op, 'var_check': var_check, 'var_poste': var_poste, 'libel': libel_op})
+            # Consigne du Bureau d'étude pour le poste de cette étape (écran Atelier du poste, fiches imprimées)
+            consigne = champ(self.gamme_frame, f"Consigne pour {libel_op.lower()} (facultatif)", largeur=360)
+            consigne.pack(fill=tk.X, padx=(36, T.ESPACE_S), pady=(0, T.ESPACE_S))
+            self.gamme_vars.append({'code_op': code_op, 'var_check': var_check, 'var_poste': var_poste, 'libel': libel_op,
+                                    'consigne': consigne})
 
     def save(self):
         ref_prod = self.produit_choisi()
@@ -473,8 +485,9 @@ class AddOfDialog(_FormulaireOF):
         valeurs = self.lire_champs_communs()
         if valeurs is None:
             return
-        # Étapes cochées, dans l'ordre de la gamme, avec leur poste assigné (None = libre)
-        etapes = [(step['code_op'], self.poste_choisi(step['var_poste'])) for step in self.gamme_vars if step['var_check'].get()]
+        # Étapes cochées, dans l'ordre de la gamme, avec leur poste assigné (None = libre) et leur consigne
+        etapes = [(step['code_op'], self.poste_choisi(step['var_poste']), step['consigne'].get().strip())
+                  for step in self.gamme_vars if step['var_check'].get()]
         if not etapes:
             self.erreur("Gardez au moins une opération dans la gamme.")
             return
@@ -488,6 +501,7 @@ class AddOfDialog(_FormulaireOF):
         except sqlite3.IntegrityError:     # numéro d'OF pris au même instant par un autre PC
             self.erreur("Un autre poste vient de créer un OF : cliquez à nouveau sur « Créer l'OF ».")
             return
+        self.imprimer = self.imprimer_var.get()
         self.destroy()
 
 
@@ -527,14 +541,17 @@ class ModifierOfDialog(_FormulaireOF):
                                          fg_color=T.SURFACE, border_color=T.BORDURE, text_color=T.TEXTE,
                                          button_color=T.BORDURE, button_hover_color=T.BORDURE_SURVOL)
         self.combo_cde.pack(side=tk.LEFT)
-        self.lbl_client = texte(ligne_cde, "")
-        self.lbl_client.pack(side=tk.LEFT, padx=T.ESPACE_M)
+        # Client et, dessous, pourquoi la commande ne se change pas : empilés, ils tiennent dans la largeur
+        infos_cde = ctk.CTkFrame(ligne_cde, fg_color="transparent")
+        infos_cde.pack(side=tk.LEFT, padx=T.ESPACE_M)
+        self.lbl_client = texte(infos_cde, "")
+        self.lbl_client.pack(anchor="w")
         if sum(self.scans_op.values()) or of.annule or sage is None:
             self.combo_cde.configure(state="disabled")
             raison = ("déjà scanné : la commande ne change plus" if sum(self.scans_op.values())
                       else "OF annulé : réactivez-le pour changer de commande" if of.annule else "")
             if raison:
-                texte(ligne_cde, raison, taille=T.TAILLE_LEGENDE).pack(side=tk.LEFT)
+                texte(infos_cde, raison, taille=T.TAILLE_LEGENDE).pack(anchor="w")
 
         # --- Produit ---
         self.etiquette(1, "Produit")
@@ -573,16 +590,16 @@ class ModifierOfDialog(_FormulaireOF):
         outils = ctk.CTkFrame(self.colonne_gamme, fg_color="transparent")
         outils.pack(side=tk.BOTTOM, fill=tk.X, pady=(T.ESPACE_S, 0))
         self.var_ajout = tk.StringVar(value="")
-        self.combo_ajout = ctk.CTkComboBox(outils, variable=self.var_ajout, values=[], state="readonly", width=200, height=32,
+        self.combo_ajout = ctk.CTkComboBox(outils, variable=self.var_ajout, values=[], state="readonly", width=160, height=32,
                                            corner_radius=T.RAYON_CONTROLE, font=T.police(T.TAILLE_CORPS),
                                            fg_color=T.SURFACE, border_color=T.BORDURE, text_color=T.TEXTE,
                                            button_color=T.BORDURE, button_hover_color=T.BORDURE_SURVOL)
         self.combo_ajout.pack(side=tk.LEFT)
         bouton(outils, "Ajouter", self._ajouter_operation, style="secondaire", width=90, height=32).pack(side=tk.LEFT, padx=T.ESPACE_S)
         bouton(outils, "Gamme du produit", self._gamme_du_produit, style="fantome", height=32).pack(side=tk.RIGHT)
-        self.zone_gamme("Ajoutez, retirez, déplacez (▲ ▼) les opérations et choisissez leur poste. "
+        self.zone_gamme("Ajoutez, retirez, déplacez (▲ ▼) les opérations, choisissez leur poste et leur consigne. "
                         "Une opération déjà scannée ne peut pas être retirée.")
-        self.etapes = [self._etape(code, poste) for _, code, poste in depot.gamme_of(of.id)]
+        self.etapes = [self._etape(code, poste, consigne) for _, code, poste, consigne in depot.etapes_of(of.id)]
         self._gamme_initiale = [e["code"] for e in self.etapes]
         self._dessiner_gamme()
 
@@ -674,12 +691,21 @@ class ModifierOfDialog(_FormulaireOF):
         if self.depot.gamme_produit(ref):
             self._gamme_du_produit()
 
-    def _etape(self, code, poste):
+    def _etape(self, code, poste, consigne=""):
         postes = [POSTE_LIBRE] + [f"{c} - {d}" for c, d in self.depot.postes_pour_operation(code)]
         valeur = next((p for p in postes if poste and p.split(" - ")[0] == poste), POSTE_LIBRE)
-        return {"code": code, "postes": postes, "var_poste": tk.StringVar(value=valeur)}
+        return {"code": code, "postes": postes, "var_poste": tk.StringVar(value=valeur),
+                "var_consigne": tk.StringVar(value=consigne or "")}
+
+    def _lire_consignes(self):
+        """Recopie les consignes saisies avant de redessiner la gamme (déplacement, ajout, retrait)."""
+        for etape in self.etapes:
+            entree = etape.get("entree")
+            if entree is not None and entree.winfo_exists():
+                etape["var_consigne"].set(entree.get())
 
     def _dessiner_gamme(self):
+        self._lire_consignes()
         for widget in self.gamme_frame.winfo_children():
             widget.destroy()
         for i, etape in enumerate(self.etapes):
@@ -700,6 +726,11 @@ class ModifierOfDialog(_FormulaireOF):
             _, combo = self.combo_poste(rangee, etape["postes"], etape["var_poste"].get())
             combo.configure(variable=etape["var_poste"], width=150)
             combo.pack(side=tk.RIGHT, padx=(0, T.ESPACE_XS))
+            consigne = champ(self.gamme_frame, f"Consigne pour {libelle.lower()} (facultatif)", largeur=340)
+            if etape["var_consigne"].get():
+                consigne.insert(0, etape["var_consigne"].get())
+            consigne.pack(fill=tk.X, padx=(28, T.ESPACE_XS), pady=(0, T.ESPACE_S))
+            etape["entree"] = consigne
         if not self.etapes:
             texte(self.gamme_frame, "Aucune opération : ajoutez-en au moins une.", anchor="center").pack(fill=tk.X, pady=T.ESPACE_L)
         presentes = {e["code"] for e in self.etapes}
@@ -738,8 +769,10 @@ class ModifierOfDialog(_FormulaireOF):
                         + ", ".join(self.libelles.get(c) or c for c in manquantes)
                         + " a déjà des pièces scannées et n'y figure pas.")
             return
+        self._lire_consignes()
         postes = {e["code"]: self.poste_choisi(e["var_poste"]) for e in self.etapes}
-        self.etapes = [self._etape(code, postes.get(code)) for code in dict.fromkeys(standard)]
+        consignes = {e["code"]: e["var_consigne"].get() for e in self.etapes}
+        self.etapes = [self._etape(code, postes.get(code), consignes.get(code, "")) for code in dict.fromkeys(standard)]
         self._dessiner_gamme()
         self.lbl_erreur.configure(text="")
 
@@ -751,7 +784,8 @@ class ModifierOfDialog(_FormulaireOF):
             return
         cde = self.var_cde.get()
         prod = self._libelles_produits.get(self.var_prod.get(), self.of.prod)
-        etapes = [(e["code"], self.poste_choisi(e["var_poste"])) for e in self.etapes]
+        self._lire_consignes()
+        etapes = [(e["code"], self.poste_choisi(e["var_poste"]), e["var_consigne"].get().strip()) for e in self.etapes]
         if not etapes:
             self.erreur("Gardez au moins une opération dans la gamme.")
             return
@@ -770,8 +804,8 @@ class ModifierOfDialog(_FormulaireOF):
             changements.append(f"numéro {self.of.id} → {id_of}")
         if prod != self.of.prod:
             changements.append(f"produit {self.of.prod} → {prod}")
-        if [c for c, _ in etapes] != self._gamme_initiale:
-            changements.append("gamme " + " › ".join(self._gamme_initiale) + " → " + " › ".join(c for c, _ in etapes))
+        if [e[0] for e in etapes] != self._gamme_initiale:
+            changements.append("gamme " + " › ".join(self._gamme_initiale) + " → " + " › ".join(e[0] for e in etapes))
         if set(lignes) != set(self.lignes_of):
             changements.append(f"lignes {len(self.lignes_of)} → {len(lignes)}")
         if valeurs["qte"] != self.of.qte:
