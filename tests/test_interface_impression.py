@@ -208,11 +208,33 @@ class AtelierEtImpression(unittest.TestCase):
         self.app.remettre_atelier_a_zero()
         contenu = self.app.depot.contenu_atelier()
         self.assertEqual((contenu["OF"], contenu["scans"], contenu["validations"]), (0, 0, 0))
-        self.assertEqual(contenu["commandes"], 4, "les commandes en cours sont relues du classeur Sage")
-        self.assertEqual(self.app.etat.ofs, {})
+        self.assertEqual(contenu["commandes"], 4, "le classeur est relu (commandes gardées en copie, masquées)")
+        self.assertEqual((self.app.sage.entetes, self.app.etat.ofs), ({}, {}), "plus rien d'affiché")
+        self.assertEqual(self.app.tree_be_cmd.get_children(), ())
+        self.assertIn("depuis le", self.app.lbl_sage.cget("text"))
+        self.assertIn("seules les nouvelles s'affichent", self.app.lbl_depart.cget("text"))
         self.assertEqual(self.app.depot.chef_par_code("4321"), "Karim")
         sauvegardes = os.listdir(os.path.join(self.tmp.name, "sauvegardes"))
         self.assertTrue(any("avant_remise_a_zero" in nom for nom in sauvegardes), "copie de la base avant le vidage")
+        # Une commande d'avant scannée à un poste : message clair
+        self.poste("DEC1")
+        self.app.process_scan("CC2")
+        self.assertEqual(self.bandeau()[0], "Commande d'avant la remise à zéro")
+        # Réafficher : les commandes en cours du classeur reviennent
+        self.app.reafficher_commandes()
+        self.assertEqual(len(self.app.sage.entetes), 4)
+        self.assertTrue(self.app.tree_be_cmd.get_children())
+
+    def test_z_remise_a_zero_suivie_par_les_autres_pc(self):
+        from admiral.db import schema
+        from admiral.db.depot import Depot
+        self.assertTrue(self.app.sage.entetes)
+        autre_pc = Depot(schema.ouvrir(config.chemin_base(config.lire_config())))
+        autre_pc.remettre_a_zero(moment="2999-01-01T00:00:00")
+        autre_pc.conn.close()
+        self.app._surveiller_base()
+        self.assertEqual(self.app.sage.entetes, {}, "ce PC a suivi la remise à zéro faite ailleurs")
+        self.app.depot.retirer_depart()
 
 
 if __name__ == "__main__":

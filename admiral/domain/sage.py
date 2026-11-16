@@ -105,6 +105,9 @@ class DonneesSage:
     entetes_sorties: dict = field(default_factory=dict)   # DO_Piece -> en-tête des commandes sorties de Sage (copie)
     source: str = ""                                      # fichier lu (classeur ou CSV des lignes)
     date_source: str = ""                                 # enregistrement du fichier, « AAAA-MM-JJTHH:MM:SS »
+    # Point de départ de la remise à zéro (Depot.depart) : les commandes d'avant ne sont plus listées
+    depart: tuple = None                                  # (jour « AAAA-MM-JJ », moment « AAAA-MM-JJTHH:MM:SS ») ou None
+    anterieures: set = field(default_factory=set)         # commandes d'avant le point de départ, masquées
 
     def lignes_commande(self, do_piece):
         return self.lignes_par_piece.get(do_piece, [])
@@ -400,6 +403,22 @@ def lire_date_sage(texte):
     except ValueError:
         return ""
     return "" if jour.year <= 1753 else jour.isoformat()
+
+
+def commande_nouvelle(entete, date_entree, depart):
+    """La commande est-elle arrivée après la remise à zéro de l'atelier ?
+
+    depart : (jour « AAAA-MM-JJ », moment « AAAA-MM-JJTHH:MM:SS ») de la remise à zéro, ou None (tout est affiché).
+    Nouvelle = arrivée dans la copie de la base (date_entree, première lecture) après la remise à zéro, ET datée
+    dans Sage du jour de la remise à zéro ou après. Les commandes déjà dans le classeur à la remise à zéro restent
+    donc masquées, comme une ancienne commande qui n'arriverait qu'ensuite (classeur pas actualisé depuis longtemps)."""
+    if not depart:
+        return True
+    jour, moment = depart
+    if not (date_entree and date_entree > moment):
+        return False
+    date_commande = lire_date_sage(entete.get("DO_Date"))
+    return not date_commande or date_commande >= jour
 
 
 def nombre(valeur):

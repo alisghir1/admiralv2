@@ -12,6 +12,7 @@ from .. import theme as T
 from ..db import schema
 from ..db.depot import Depot
 from ..domain import lecture_sage, sage
+from ..domain.synthese import format_date_complete
 from ..journal import journal
 from .administration import AdministrationMixin
 from .atelier import AtelierMixin
@@ -384,11 +385,13 @@ class AdmiralApp(AtelierMixin, SyntheseMixin, GenerationOFMixin, MatriceMixin, C
         return bilan
 
     def _maj_libelle_sage(self):
+        # Après une remise à zéro, la date est rappelée : personne ne cherche une commande d'avant
+        depuis = f" · depuis le {format_date_complete(self.sage.depart[0])}" if self.sage.depart else ""
         if self.sage.date_source:
             self.lbl_sage.configure(text=f"Sage au {datetime.fromisoformat(self.sage.date_source):%d/%m %H:%M}"
-                                         f" · {len(self.sage.entetes)} commandes")
+                                         f" · {len(self.sage.entetes)} commandes{depuis}")
         else:
-            self.lbl_sage.configure(text="Exports Sage absents")
+            self.lbl_sage.configure(text=f"Exports Sage absents{depuis}")
 
     # --- Relecture automatique de Sage ---
 
@@ -433,8 +436,8 @@ class AdmiralApp(AtelierMixin, SyntheseMixin, GenerationOFMixin, MatriceMixin, C
                 bilan = None
             else:
                 journal().info("Sage (relecture automatique) : %s", bilan.resume())
-        if self.depot.date_source_sage() == self.sage.date_source:
-            return  # la copie de la base n'a pas changé
+        if self.depot.date_source_sage() == self.sage.date_source and self.depot.depart() == self.sage.depart:
+            return  # ni la copie de la base ni le point de départ n'ont changé
         self.sage = self.depot.charger_sage()
         self._maj_libelle_sage()
         if bilan is None:
@@ -466,6 +469,10 @@ class AdmiralApp(AtelierMixin, SyntheseMixin, GenerationOFMixin, MatriceMixin, C
             version = self.depot.version_donnees()
             if version != self._version_base:
                 self._version_base = version
+                if self.depot.depart() != self.sage.depart:
+                    # Remise à zéro faite sur un autre PC : les listes de commandes suivent
+                    self.sage = self.depot.charger_sage()
+                    self._maj_libelle_sage()
                 self.rafraichir_ecrans_ouverts()
         except tk.TclError:   # fenêtre en cours de fermeture
             return

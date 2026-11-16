@@ -114,17 +114,47 @@ class RemiseAZero(Base):
         self.assertTrue(self.depot.lister_postes())
         self.assertEqual(self.depot.chef_par_code("4321"), "Karim", "chefs d'atelier gardés")
 
-    def test_les_commandes_en_cours_reviennent_du_classeur(self):
-        self.depot.remettre_a_zero()
-        bilan = self.depot.synchroniser_sage(lecture("2026-11-16T08:00:00", COMMANDES))
-        self.assertFalse(bilan.ignoree, "la lecture n'est plus comparée à l'ancienne copie")
+    def test_plus_rien_d_affiche_puis_seulement_les_nouvelles_commandes(self):
+        # Remise à zéro le 16/11 à 09:00, avec la lecture du classeur du moment : ses commandes sont « d'avant »
+        self.depot.remettre_a_zero(lecture("2026-11-16T08:00:00", COMMANDES), moment="2026-11-16T09:00:00")
+        self.depot.conn.execute("UPDATE SageCommandes SET DateEntree = '2026-11-16T08:59:00'")   # copiées avant
+        self.depot.conn.commit()
         etat, donnees = self.charger()
-        self.assertEqual(sorted(donnees.entetes), ["CC251234", "CC261234", "CC261235"])
-        self.assertEqual(etat.ofs, {})
-        # Les numéros d'OF repartent de 01 dans chaque commande
-        self.assertEqual(self.depot.creer_of("CC261234", "VT8", "Crédences", "", 4, "CC261234-1000", [("DEC", None)]),
-                         "OF261234-01")
-        self.assertEqual(self.depot.ajouter_scans("OF261234-01", [("DEC1", 1)]) or self.depot.ids_scans("OF261234-01", "DEC"), [1])
+        self.assertEqual((donnees.entetes, etat.ofs), ({}, {}), "plus rien d'affiché")
+        self.assertEqual(donnees.anterieures, {"CC251234", "CC261234", "CC261235"})
+        self.assertEqual(donnees.depart, ("2026-11-16", "2026-11-16T09:00:00"))
+        # Le client actualise le classeur : une nouvelle commande du jour, et une vieille qui n'y était pas encore
+        suite = dict(COMMANDES, CC261300=("2026-11-16", "NOUVEAU CLIENT", {1000: (2, 500, 400, 0, 0)}),
+                     CC251300=("2025-10-01", "VIEILLE COMMANDE", {1000: (1, 100, 100, 0, 0)}))
+        self.depot.synchroniser_sage(lecture("2026-11-16T10:00:00", suite))
+        etat, donnees = self.charger()
+        self.assertEqual(list(donnees.entetes), ["CC261300"], "seule la nouvelle commande d'aujourd'hui s'affiche")
+        self.assertEqual([c for c, _ in donnees.lignes_commande("CC261300")], ["CC261300-1000"])
+        self.assertEqual(donnees.lignes_commande("CC261234"), [], "lignes des commandes d'avant masquées")
+        # Tout fonctionne : un OF se crée sur la nouvelle commande, numéroté depuis 01
+        self.assertEqual(self.depot.creer_of("CC261300", "VT8", "Étagères", "", 2, "CC261300-1000", [("DEC", None)]),
+                         "OF261300-01")
+        # « Réafficher les commandes d'avant » : tout revient, sans toucher aux OF
+        self.depot.retirer_depart()
+        etat, donnees = self.charger()
+        self.assertEqual(sorted(donnees.entetes), ["CC251234", "CC251300", "CC261234", "CC261235", "CC261300"])
+        self.assertIn("OF261300-01", etat.ofs)
+
+    def test_une_commande_avec_des_of_reste_affichee(self):
+        self.depot.definir_depart("2026-11-16", "2026-11-16T09:00:00")
+        self.depot.conn.execute("UPDATE SageCommandes SET DateEntree = '2026-11-16T08:00:00'")
+        self.depot.conn.commit()
+        _, donnees = self.charger()
+        self.assertEqual(sorted(donnees.entetes), ["CC251234", "CC261234", "CC261235"], "elles ont des OF")
+
+    def test_partage_entre_les_postes(self):
+        with tempfile.TemporaryDirectory() as dossier:
+            chemin = os.path.join(dossier, "base.db")
+            premier, second = Depot(schema.ouvrir(chemin)), Depot(schema.ouvrir(chemin))
+            premier.remettre_a_zero(moment="2026-11-16T09:00:00")
+            self.assertEqual(second.depart(), ("2026-11-16", "2026-11-16T09:00:00"))
+            premier.conn.close()
+            second.conn.close()
 
 
 class Documents(Base):

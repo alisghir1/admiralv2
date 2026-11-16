@@ -8,7 +8,8 @@ import customtkinter as ctk
 from .. import config as cfg
 from .. import theme as T
 from ..db import schema
-from ..domain import documents, referentiel
+from ..domain import documents, referentiel, sage
+from ..domain.synthese import format_date_complete
 from ..journal import journal
 from .composants import bouton, carte, champ, tableau, texte, titre
 from .widgets import maj_tags_selection
@@ -502,9 +503,10 @@ class AdministrationMixin:
         titre(bloc, "Remettre l'atelier à zéro", taille=T.TAILLE_SOUS_TITRE).pack(
             fill=tk.X, padx=T.ESPACE_XL, pady=(T.ESPACE_XL, T.ESPACE_XS))
         texte(bloc, "Pour démarrer en production avec une base vierge. Sont effacés : les OF, les scans, les "
-                    "validations, les commandes clôturées et la copie des commandes Sage. Sont gardés : produits, "
-                    "gammes, opérations, postes et chefs d'atelier. Les commandes en cours reviennent aussitôt du "
-                    "classeur Sage, sans OF. Une copie de la base est faite dans « sauvegardes » avant le vidage. "
+                    "validations et les commandes clôturées ; les commandes actuelles du classeur Sage ne sont plus "
+                    "affichées. Ensuite, seules les nouvelles commandes (datées d'aujourd'hui ou après) apparaissent, "
+                    "dès que le classeur est actualisé et enregistré. Sont gardés : produits, gammes, opérations, postes "
+                    "et chefs d'atelier. Une copie de la base est faite dans « sauvegardes » avant le vidage. "
                     "Tous les PC suivent.", wraplength=640, justify="left").pack(fill=tk.X, padx=T.ESPACE_XL)
         self.lbl_contenu_atelier = titre(bloc, "", taille=T.TAILLE_CORPS)
         self.lbl_contenu_atelier.pack(fill=tk.X, padx=T.ESPACE_XL, pady=(T.ESPACE_L, T.ESPACE_S))
@@ -514,6 +516,11 @@ class AdministrationMixin:
         self.champ_vider = champ(ligne, "VIDER", largeur=120)
         self.champ_vider.pack(side=tk.LEFT, padx=T.ESPACE_S)
         bouton(ligne, "Remettre à zéro", self.remettre_atelier_a_zero, style="danger", width=160).pack(side=tk.LEFT)
+        self.lbl_depart = texte(bloc, "", couleur=T.TEXTE, wraplength=640, justify="left")
+        self.lbl_depart.pack(fill=tk.X, padx=T.ESPACE_XL, pady=(T.ESPACE_M, 0))
+        self.btn_reafficher = bouton(bloc, "Réafficher les commandes d'avant", self.reafficher_commandes,
+                                     style="secondaire", state="disabled")
+        self.btn_reafficher.pack(anchor="w", padx=T.ESPACE_XL, pady=(T.ESPACE_S, 0))
         self.lbl_remise_info = texte(bloc, "", wraplength=640, justify="left")
         self.lbl_remise_info.pack(fill=tk.X, padx=T.ESPACE_XL, pady=(T.ESPACE_S, T.ESPACE_L))
 
@@ -532,7 +539,18 @@ class AdministrationMixin:
         contenu = self.depot.contenu_atelier()
         self.lbl_contenu_atelier.configure(
             text=f"Actuellement : {contenu['OF']} OF, {contenu['scans']} scans, {contenu['validations']} validations, "
-                 f"{contenu['commandes']} commandes copiées de Sage")
+                 f"{len(self.sage.entetes)} commandes affichées")
+        depart = self.depot.depart()
+        if depart:
+            jour, moment = depart
+            masquees = len(self.sage.anterieures)
+            self.lbl_depart.configure(text=f"Remis à zéro le {format_date_complete(jour)} à {moment[11:16]} : "
+                                           f"{masquees} commande{'s' if masquees > 1 else ''} d'avant masquée"
+                                           f"{'s' if masquees > 1 else ''}, seules les nouvelles s'affichent.")
+            self.btn_reafficher.configure(state="normal")
+        else:
+            self.lbl_depart.configure(text="Toutes les commandes en cours du classeur Sage sont affichées.")
+            self.btn_reafficher.configure(state="disabled")
 
     def _sauvegarder_base(self, motif):
         """Copie de la base avant un vidage ; None si la copie est impossible (signalé)."""
@@ -557,17 +575,36 @@ class AdministrationMixin:
         copie = self._sauvegarder_base("avant_remise_a_zero")
         if copie is None:
             return
-        self.depot.remettre_a_zero()
+        # Le classeur est relu avant le point de départ : ses commandes actuelles sont « d'avant » et restent masquées
+        try:
+            lecture = sage.charger(self.dossier_sage)
+        except Exception as exc:   # classeur absent ou en cours d'enregistrement : les commandes datées d'avant
+            journal().warning("Remise à zéro sans lecture du classeur Sage : %s", exc)   # aujourd'hui restent masquées
+            lecture = None
+        self.depot.remettre_a_zero(lecture)
         journal().info("Atelier remis à zéro (%s) ; copie de la base : %s", contenu, copie)
         self.champ_vider.delete(0, tk.END)
-        bilan = self.load_sage_data()   # les commandes en cours reviennent du classeur Sage
+        self._apres_changement_depart()
+        self.lbl_remise_info.configure(text=f"Atelier remis à zéro. Copie de la base avant le vidage : {copie}",
+                                       text_color=T.TEXTE_ATTENUE)
+        self._message_admin("Atelier remis à zéro")
+
+    def reafficher_commandes(self):
+        if not messagebox.askyesno("Réafficher les commandes", "Réafficher toutes les commandes en cours du classeur "
+                                   "Sage, y compris celles d'avant la remise à zéro ?\n\nLes OF et les scans ne sont pas touchés."):
+            return
+        self.depot.retirer_depart()
+        journal().info("Commandes d'avant la remise à zéro réaffichées")
+        self._apres_changement_depart()
+        self._message_admin("Commandes d'avant réaffichées")
+
+    def _apres_changement_depart(self):
+        """Tous les écrans de ce PC suivent ; les autres PC à leur prochaine relecture de la base (5 s)."""
+        self.sage = self.depot.charger_sage()
+        self._maj_libelle_sage()
         self.recharger_etat()
         self.refresh_dashboard()
         self._maj_mise_en_service()
-        relu = f"{len(self.sage.entetes)} commandes en cours relues de Sage" if bilan else "classeur Sage à relire"
-        self.lbl_remise_info.configure(text=f"Atelier remis à zéro · {relu}. Copie de la base avant le vidage : {copie}",
-                                       text_color=T.TEXTE_ATTENUE)
-        self._message_admin("Atelier remis à zéro")
 
     def imprimer_page_essai(self):
         from .impression import generer_apercu

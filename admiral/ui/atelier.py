@@ -419,8 +419,16 @@ class AtelierMixin:
 
         # Code article : « CC261234-1000 », une ligne de commande, comptée dans l'OF qui la contient
         cde_article = codes.commande_de_l_article(code)
-        if cde_article and code in self.sage.lignes:
+        if cde_article and code in self.sage.lignes and cde_article not in self.sage.anterieures:
             self._scanner_article(cde_article, code)
+            return
+
+        # Commande (ou article) d'avant la remise à zéro : elle existe dans Sage, mais n'est plus suivie
+        anterieure = next((c for c in (cde, cde_article) if c and c in self.sage.anterieures), None)
+        if anterieure:
+            self.update_status_bar("error", "Commande d'avant la remise à zéro",
+                                   f"La commande {anterieure} date d'avant la remise à zéro de l'atelier : "
+                                   "elle n'est pas suivie dans Admiral.")
             return
 
         self.update_status_bar("error", "Code inconnu",

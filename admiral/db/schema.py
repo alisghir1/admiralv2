@@ -198,6 +198,11 @@ def _migration_8_consignes(conn):
     _ajouter_colonne(conn, "OF_Gammes", "Consigne", "TEXT")
 
 
+def _migration_9_parametres(conn):
+    """Paramètres communs à tous les postes : le point de départ posé par la remise à zéro de l'atelier."""
+    conn.execute("CREATE TABLE IF NOT EXISTS Parametres (Cle TEXT PRIMARY KEY, Valeur TEXT)")
+
+
 MIGRATIONS = [
     _migration_1_tables,
     _migration_2_index,
@@ -207,6 +212,7 @@ MIGRATIONS = [
     _migration_6_copie_sage,
     _migration_7_chefs_atelier,
     _migration_8_consignes,
+    _migration_9_parametres,
 ]
 
 VERSION_SCHEMA = len(MIGRATIONS)

@@ -7,10 +7,13 @@ import json
 from datetime import datetime
 
 from ..domain.etat import OF, EtatAtelier, TOUS_SCANS
-from ..domain.sage import PREFIXE_COMMANDE, BilanSynchro, DonneesSage, numero_ligne
+from ..domain.sage import PREFIXE_COMMANDE, BilanSynchro, DonneesSage, commande_nouvelle, numero_ligne
 from .schema import cle_ligne
 
 PREFIXE_OF = "OF"
+# Paramètres communs à tous les postes (table Parametres) : point de départ de la remise à zéro
+CLE_DEPART_JOUR = "depart_jour"       # « AAAA-MM-JJ » : seules les commandes datées de ce jour ou après…
+CLE_DEPART_MOMENT = "depart_moment"   # … et arrivées dans la copie de Sage après ce moment sont affichées
 
 
 def base_numero_of(cde):
@@ -496,9 +499,11 @@ class Depot:
                 "validations": self._compter("SELECT COUNT(*) FROM ValidationsChef"),
                 "commandes": self._compter("SELECT COUNT(*) FROM SageCommandes")}
 
-    def remettre_a_zero(self):
-        """Vide les OF, scans, validations, clôtures et la copie des commandes Sage, en une seule transaction.
-        La relecture suivante du classeur Sage remet les commandes en cours, sans aucun OF."""
+    def remettre_a_zero(self, lecture=None, moment=None):
+        """Base vierge : vide les OF, scans, validations, clôtures et la copie des commandes Sage, puis recopie
+        la lecture du classeur donnée (lecture : DonneesSage, ou None) et pose le point de départ juste après.
+        Ces commandes, déjà là, restent masquées : seules les commandes qui arrivent ensuite dans le classeur,
+        datées du jour ou après, s'affichent (sage.commande_nouvelle). Retourne le bilan de la recopie ou None."""
         with self.conn:
             if not self.conn.in_transaction:
                 self.conn.execute("BEGIN IMMEDIATE")   # aucun poste n'écrit pendant le vidage
@@ -507,6 +512,31 @@ class Depot:
             # Numérotation des scans et des validations repartie de 1
             if self.conn.execute("SELECT 1 FROM sqlite_master WHERE name = 'sqlite_sequence'").fetchone():
                 self.conn.execute("DELETE FROM sqlite_sequence WHERE name IN ('Scans', 'ValidationsChef')")
+        bilan = self.synchroniser_sage(lecture) if lecture is not None else None
+        self.definir_depart(moment=moment)   # après la recopie : tout ce qui vient d'être lu est d'avant
+        return bilan
+
+    # --- Point de départ (commun à tous les postes) ---
+
+    def _parametre(self, cle):
+        ligne = self.conn.execute("SELECT Valeur FROM Parametres WHERE Cle = ?", (cle,)).fetchone()
+        return ligne[0] if ligne and ligne[0] else None
+
+    def depart(self):
+        """(jour, moment) de la dernière remise à zéro, ou None : toutes les commandes en cours sont affichées."""
+        jour = self._parametre(CLE_DEPART_JOUR)
+        return (jour, self._parametre(CLE_DEPART_MOMENT) or "") if jour else None
+
+    def definir_depart(self, jour=None, moment=None):
+        moment = moment or datetime.now().isoformat(timespec="seconds")
+        with self.conn:
+            self.conn.executemany("INSERT OR REPLACE INTO Parametres (Cle, Valeur) VALUES (?, ?)",
+                                  [(CLE_DEPART_JOUR, jour or moment[:10]), (CLE_DEPART_MOMENT, moment)])
+
+    def retirer_depart(self):
+        """Réaffiche toutes les commandes en cours du classeur (y compris celles d'avant la remise à zéro)."""
+        with self.conn:
+            self.conn.execute("DELETE FROM Parametres WHERE Cle IN (?, ?)", (CLE_DEPART_JOUR, CLE_DEPART_MOMENT))
 
     # --- Copie des commandes Sage ---
 
@@ -569,16 +599,25 @@ class Depot:
     def charger_sage(self):
         """Commandes Sage de la base (DonneesSage). Seules les commandes et lignes encore dans Sage sont listées ;
         les lignes sorties restent accessibles par leur clé (donnees.lignes) pour les OF qui les contiennent,
-        et les commandes sorties (donnees.entetes_sorties) pour afficher le client de ces OF."""
+        et les commandes sorties (donnees.entetes_sorties) pour afficher le client de ces OF.
+        Après une remise à zéro, les commandes d'avant le point de départ ne sont pas listées (donnees.anterieures),
+        sauf si elles ont des OF."""
         lecture = self.conn.execute("SELECT Source, DateSource FROM SageLecture WHERE ID = 1").fetchone()
         donnees = DonneesSage(source=lecture[0] or "", date_source=lecture[1] or "") if lecture else DonneesSage()
-        for piece, texte, present in self.conn.execute("SELECT DO_Piece, Donnees, Present FROM SageCommandes ORDER BY rowid"):
-            (donnees.entetes if present else donnees.entetes_sorties)[piece] = json.loads(texte)
+        donnees.depart = self.depart()
+        avec_of = {cde for (cde,) in self.conn.execute("SELECT DISTINCT CDE FROM CdeDetail")} if donnees.depart else set()
+        for piece, texte, present, entree in self.conn.execute(
+                "SELECT DO_Piece, Donnees, Present, DateEntree FROM SageCommandes ORDER BY rowid"):
+            entete = json.loads(texte)
+            if piece not in avec_of and not commande_nouvelle(entete, entree, donnees.depart):
+                donnees.anterieures.add(piece)
+                continue
+            (donnees.entetes if present else donnees.entetes_sorties)[piece] = entete
         for cle, piece, texte, present in self.conn.execute(
                 "SELECT CleLigne, DO_Piece, Donnees, Present FROM SageLignes ORDER BY rowid"):
             ligne = json.loads(texte)
             donnees.lignes[cle] = ligne
-            if present:
+            if present and piece not in donnees.anterieures:
                 donnees.lignes_par_piece.setdefault(piece, []).append((cle, ligne))
         for lignes in donnees.lignes_par_piece.values():
             lignes.sort(key=lambda item: numero_ligne(item[1]))

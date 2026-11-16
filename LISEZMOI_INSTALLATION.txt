@@ -55,12 +55,17 @@ Installation avec vos données
 5. REPARTIR D'UNE BASE VIERGE (mise en production)
    Bureau d'étude > Administration > Mise en service > « Remettre l'atelier à
    zéro » : tapez VIDER puis cliquez sur « Remettre à zéro ».
-   - Sont effacés : les OF, les scans, les validations, les commandes clôturées et
-     la copie des commandes Sage.
+   - Sont effacés : les OF, les scans, les validations et les commandes clôturées.
+     Les commandes actuelles du classeur Sage ne sont plus affichées : plus rien
+     n'apparaît dans l'application.
+   - Ensuite, seules les NOUVELLES commandes (datées de ce jour ou après)
+     apparaissent, dès que le classeur Sage est actualisé et enregistré.
    - Sont gardés : produits, gammes, opérations, postes et chefs d'atelier.
-   - Les commandes en cours reviennent aussitôt du classeur Sage, sans OF.
    - Une copie de la base est faite dans « sauvegardes » avant le vidage.
-   Tous les PC suivent (en 5 secondes au plus).
+   - « Réafficher les commandes d'avant » remet toutes les commandes en cours du
+     classeur, si besoin.
+   Tous les PC suivent (en 5 secondes au plus). En haut de l'écran,
+   « depuis le ... » rappelle la date de la remise à zéro.
 
 6. IMPRESSION ET DOUCHETTE
    Chaque élément a son code-barres (Code 128) :

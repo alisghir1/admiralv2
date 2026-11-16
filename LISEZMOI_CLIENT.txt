@@ -69,8 +69,9 @@ Version de validation (données de démonstration)
                       listes » : liste de travail d'un poste ou de tous.
    Administration     Produits et gammes, opérations, postes, chefs d'atelier,
                       import Excel, mise en service : remise à zéro de l'atelier
-                      (base vierge : OF, scans et validations effacés, référentiel
-                      gardé) et page d'essai de la douchette.
+                      (base vierge : OF, scans et validations effacés, plus aucune
+                      commande affichée, puis seulement les nouvelles commandes ;
+                      référentiel gardé) et page d'essai de la douchette.
 
    Les données sont fictives : vous pouvez tout essayer sans risque.
    Pour repartir de zéro, supprimez suivi_atelier.db et config_poste.json,
